@@ -127,23 +127,48 @@ ${styles}
                 </div>
 
                 <div class="theme-details-group">
-                    <div class="theme-details-subtitle">Borders & Lines</div>
-                    <div id="bordersElements"></div>
+                    <div class="theme-details-subtitle">Errors & Warnings</div>
+                    <div id="errorsElements"></div>
                 </div>
 
                 <div class="theme-details-group">
-                    <div class="theme-details-subtitle">UI Components</div>
-                    <div id="uiElements"></div>
+                    <div class="theme-details-subtitle">Overview Ruler</div>
+                    <div id="overviewRulerElements"></div>
                 </div>
 
                 <div class="theme-details-group">
-                    <div class="theme-details-subtitle">Lists & Selection</div>
-                    <div id="listsElements"></div>
+                    <div class="theme-details-subtitle">Gutter</div>
+                    <div id="gutterElements"></div>
                 </div>
 
                 <div class="theme-details-group">
-                    <div class="theme-details-subtitle">Inputs & Buttons</div>
-                    <div id="inputsElements"></div>
+                    <div class="theme-details-subtitle">Sidebar</div>
+                    <div id="sidebarElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Activity Bar</div>
+                    <div id="activityBarElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Title Bar</div>
+                    <div id="titleBarElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Status Bar</div>
+                    <div id="statusBarElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Tabs</div>
+                    <div id="tabsElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Panel</div>
+                    <div id="panelElements"></div>
                 </div>
 
                 <div class="theme-details-group">
@@ -152,8 +177,78 @@ ${styles}
                 </div>
 
                 <div class="theme-details-group">
-                    <div class="theme-details-subtitle">Syntax Highlighting</div>
-                    <div id="syntaxElements"></div>
+                    <div class="theme-details-subtitle">Forms</div>
+                    <div id="formsElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Lists</div>
+                    <div id="listsElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Widgets</div>
+                    <div id="widgetsElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Quick Input</div>
+                    <div id="quickInputElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Peek View</div>
+                    <div id="peekViewElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Notifications</div>
+                    <div id="notificationsElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Menu</div>
+                    <div id="menuElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Scrollbar</div>
+                    <div id="scrollbarElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Breadcrumb</div>
+                    <div id="breadcrumbElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Diff Editor</div>
+                    <div id="diffElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Git Decorations</div>
+                    <div id="gitElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Badge</div>
+                    <div id="badgeElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Debug</div>
+                    <div id="debugElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Progress Bar</div>
+                    <div id="progressBarElements"></div>
+                </div>
+
+                <div class="theme-details-group">
+                    <div class="theme-details-subtitle">Symbol Icons</div>
+                    <div id="symbolsElements"></div>
                 </div>
             </div>
         </div>
