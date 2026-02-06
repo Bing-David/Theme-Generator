@@ -1,10 +1,5 @@
-/**
- * Webview Stylesheet
- * All CSS styles for the theme generator UI
- */
-
 export function getStyles(): string {
-    return `
+  return `
 :root {
     --bg-primary: #0d1117;
     --bg-secondary: #161b22;
@@ -119,6 +114,7 @@ body {
 
 .checkbox-row {
     margin-top: 8px;
+    margin-bottom: 16px;
 }
 
 .checkbox-row label {

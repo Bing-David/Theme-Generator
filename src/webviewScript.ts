@@ -1,11 +1,5 @@
-/**
- * Webview Script
- * All client-side logic for the theme generator interface
- * Handles state, event listeners, and rendering
- */
-
 export function getScript(): string {
-    return `(function () {
+  return `(function () {
     const vscode = acquireVsCodeApi();
     let currentHarmony = 'complementary';
     let currentPalette = null;
@@ -239,6 +233,10 @@ export function getScript(): string {
     document.getElementById('btnExport').addEventListener('click', () => {
         if (!currentPalette) return;
         vscode.postMessage({ command: 'exportTheme', themeName: currentPalette.name + ' Theme' });
+    });
+
+    document.getElementById('btnImport').addEventListener('click', () => {
+        vscode.postMessage({ command: 'importTheme' });
     });
 
     document.getElementById('btnSaveCurrent').addEventListener('click', () => {

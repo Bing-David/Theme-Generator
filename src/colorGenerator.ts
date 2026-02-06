@@ -295,18 +295,18 @@ function getContrastRatio(color1: string, color2: string): number {
     return (lighter + 0.05) / (darker + 0.05);
 }
 
-export function getContrastColor(bgHex: string, targetRatio: number = 4.5): string {
-    // Intenta blanco primero
-    if (getContrastRatio(bgHex, '#ffffff') >= targetRatio) {
-        return '#ffffff';
-    }
-    // Intenta negro
-    if (getContrastRatio(bgHex, '#000000') >= targetRatio) {
-        return '#000000';
-    }
-    // Si ninguno funciona, ajusta la luminosidad del fondo
-    const bgLum = getLuminance(bgHex);
-    return bgLum > 0.5 ? '#000000' : '#ffffff';
+export function getContrastColor(
+  bgHex: string,
+  targetRatio: number = 4.5,
+): string {
+  if (getContrastRatio(bgHex, "#ffffff") >= targetRatio) {
+    return "#ffffff";
+  }
+  if (getContrastRatio(bgHex, "#000000") >= targetRatio) {
+    return "#000000";
+  }
+  const bgLum = getLuminance(bgHex);
+  return bgLum > 0.5 ? "#000000" : "#ffffff";
 }
 
 export function ensureContrastRatio(

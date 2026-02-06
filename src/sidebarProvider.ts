@@ -117,17 +117,6 @@ export class ThemeGeneratorProvider implements vscode.TreeDataProvider<TreeItem>
             case 'quick-actions':
                 return [
                     {
-                        id: 'action-generate-random',
-                        label: 'Generate Random Palette',
-                        type: 'action',
-                        iconPath: new vscode.ThemeIcon('refresh'),
-                        command: {
-                            command: 'vsc-theme-generator.generateRandom',
-                            title: 'Generate Random',
-                        },
-                        tooltip: 'Generate a random color palette',
-                    },
-                    {
                         id: 'action-open-panel',
                         label: 'Open Visual Editor',
                         type: 'action',
@@ -139,15 +128,26 @@ export class ThemeGeneratorProvider implements vscode.TreeDataProvider<TreeItem>
                         tooltip: 'Open the full visual palette editor',
                     },
                     {
-                        id: 'action-clear-preview',
-                        label: 'Clear Theme Preview',
+                        id: 'action-generate-random',
+                        label: 'Generate Random Palette',
                         type: 'action',
-                        iconPath: new vscode.ThemeIcon('close'),
+                        iconPath: new vscode.ThemeIcon('symbol-color'),
                         command: {
-                            command: 'vsc-theme-generator.clearPreview',
-                            title: 'Clear Preview',
+                            command: 'vsc-theme-generator.generateRandom',
+                            title: 'Generate Random',
                         },
-                        tooltip: 'Remove applied theme preview',
+                        tooltip: 'Generate a random color palette',
+                    },
+                    {
+                        id: 'action-import-theme',
+                        label: 'Import Theme',
+                        type: 'action',
+                        iconPath: new vscode.ThemeIcon('file-add'),
+                        command: {
+                            command: 'vsc-theme-generator.importTheme',
+                            title: 'Import Theme',
+                        },
+                        tooltip: 'Import theme from JSON file',
                     },
                 ];
 
@@ -184,6 +184,17 @@ export class ThemeGeneratorProvider implements vscode.TreeDataProvider<TreeItem>
                         tooltip: 'Apply as VS Code theme preview',
                     },
                     {
+                        id: 'current-save',
+                        label: 'Save Palette',
+                        type: 'action',
+                        iconPath: new vscode.ThemeIcon('save'),
+                        command: {
+                            command: 'vsc-theme-generator.saveCurrent',
+                            title: 'Save Palette',
+                        },
+                        tooltip: 'Save to palette collection',
+                    },
+                    {
                         id: 'current-export',
                         label: 'Export Theme',
                         type: 'action',
@@ -195,15 +206,15 @@ export class ThemeGeneratorProvider implements vscode.TreeDataProvider<TreeItem>
                         tooltip: 'Save as .json theme file',
                     },
                     {
-                        id: 'current-save',
-                        label: 'Save Palette',
+                        id: 'action-clear-preview',
+                        label: 'Clear Preview',
                         type: 'action',
-                        iconPath: new vscode.ThemeIcon('save'),
+                        iconPath: new vscode.ThemeIcon('close'),
                         command: {
-                            command: 'vsc-theme-generator.saveCurrent',
-                            title: 'Save Palette',
+                            command: 'vsc-theme-generator.clearPreview',
+                            title: 'Clear Preview',
                         },
-                        tooltip: 'Save to palette collection',
+                        tooltip: 'Remove applied theme preview',
                     },
                 ];
 
@@ -250,7 +261,6 @@ export class ThemeGeneratorProvider implements vscode.TreeDataProvider<TreeItem>
         }));
     }
 
-    // Public methods for updating current palette
     setCurrentPalette(palette: Palette): void {
         this.currentPalette = palette;
         this.refresh();

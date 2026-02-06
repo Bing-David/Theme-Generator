@@ -1,10 +1,5 @@
-/**
- * Webview HTML Template
- * Main structure and layout for the theme generator UI
- */
-
 export function getHtml(styles: string, script: string, nonce: string): string {
-    return /*html*/ `<!DOCTYPE html>
+  return /*html*/ `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -98,6 +93,9 @@ ${styles}
                         </button>
                         <button class="btn" id="btnSaveCurrent">
                             Save
+                        </button>
+                        <button class="btn" id="btnImport">
+                            Import
                         </button>
                         <button class="btn" id="btnExport">
                             Export
