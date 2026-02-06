@@ -152,6 +152,11 @@ npm install
 npm run build
 ```
 
+```Publicacion
+npm install -g vsce
+vsce package
+```
+
 O utiliza el atajo de teclado **Ctrl+Shift+B** en VS Code.
 
 ### Ejecución en Modo Debug
