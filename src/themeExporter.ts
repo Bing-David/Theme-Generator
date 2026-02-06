@@ -1160,7 +1160,7 @@ function extractKeyColorsFromTheme(colors: Record<string, string>): string[] {
       if (!seen.has(normalized) && !isGrayscale(normalized)) {
         extracted.push(normalized);
         seen.add(normalized);
-        if (extracted.length >= 6) break;
+        if (extracted.length >= 6) {break;}
       }
     }
   }
@@ -1173,7 +1173,7 @@ function extractKeyColorsFromTheme(colors: Record<string, string>): string[] {
         if (!seen.has(normalized) && !isGrayscale(normalized)) {
           extracted.push(normalized);
           seen.add(normalized);
-          if (extracted.length >= 6) break;
+          if (extracted.length >= 6) {break;}
         }
       }
     }
@@ -1201,7 +1201,7 @@ function detectHarmonyType(colors: string[]): HarmonyType {
   // Calculate hue differences
   for (let i = 1; i < hues.length; i++) {
     let diff = Math.abs(hues[i] - hues[0]);
-    if (diff > 180) diff = 360 - diff;
+    if (diff > 180) {diff = 360 - diff;}
     hueDiffs.push(diff);
   }
 

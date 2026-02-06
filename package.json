@@ -1,17 +1,33 @@
 {
   "name": "vsc-theme-generator",
   "displayName": "VSC Theme Generator",
-  "description": "Generate VS Code color themes with automatic complementary palettes and custom color palettes",
-  "version": "0.0.1",
+  "description": "Generate, customize, and export VS Code color themes with real-time preview. Import existing themes to edit them with interactive color controls based on color theory harmonies.",
+  "version": "0.1.0",
+  "publisher": "JrDev",
   "icon": "media/palette-icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Bing-David/Theme-Generator"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
+  "activationEvents": [
+    "onCommand:vsc-theme-generator.openPalette"
+  ],
   "categories": [
     "Themes",
     "Visualization"
   ],
-
+  "keywords": [
+    "theme",
+    "color",
+    "palette",
+    "generator",
+    "harmony",
+    "customization",
+    "preview"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "views": {
@@ -130,15 +146,15 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.109.0",
+    "@types/vscode": "^1.85.0",
     "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
-    "typescript-eslint": "^8.54.0",
-    "eslint": "^9.39.2",
-    "esbuild": "^0.27.2",
+    "@types/node": "20.x",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.15.0",
+    "eslint": "^9.15.0",
+    "esbuild": "^0.24.0",
     "npm-run-all": "^4.1.5",
-    "typescript": "^5.9.3",
-    "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2"
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1"
   }
 }
