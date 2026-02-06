@@ -1,0 +1,144 @@
+{
+  "name": "vsc-theme-generator",
+  "displayName": "VSC Theme Generator",
+  "description": "Generate VS Code color themes with automatic complementary palettes and custom color palettes",
+  "version": "0.0.1",
+  "icon": "media/palette-icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Themes",
+    "Visualization"
+  ],
+
+  "main": "./dist/extension.js",
+  "contributes": {
+    "views": {
+      "theme-generator": [
+        {
+          "icon": "./media/palette-view-icon.svg",
+          "id": "themeGeneratorView",
+          "name": "Theme Generator",
+          "when": "true"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "theme-generator",
+          "title": "Theme Generator",
+          "icon": "media/palette-icon.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "vsc-theme-generator.openPalette",
+        "title": "Open Palette Generator",
+        "category": "Theme Generator",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "command": "vsc-theme-generator.generateRandom",
+        "title": "Generate Random Palette",
+        "category": "Theme Generator",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "vsc-theme-generator.clearPreview",
+        "title": "Clear Theme Preview",
+        "category": "Theme Generator",
+        "icon": "$(close)"
+      },
+      {
+        "command": "vsc-theme-generator.previewCurrent",
+        "title": "Preview Current Theme",
+        "category": "Theme Generator",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "vsc-theme-generator.exportCurrent",
+        "title": "Export Current Theme",
+        "category": "Theme Generator",
+        "icon": "$(export)"
+      },
+      {
+        "command": "vsc-theme-generator.saveCurrent",
+        "title": "Save Current Palette",
+        "category": "Theme Generator",
+        "icon": "$(save)"
+      },
+      {
+        "command": "vsc-theme-generator.copyColor",
+        "title": "Copy Color",
+        "category": "Theme Generator"
+      },
+      {
+        "command": "vsc-theme-generator.loadPalette",
+        "title": "Load Palette",
+        "category": "Theme Generator"
+      },
+      {
+        "command": "vsc-theme-generator.deletePalette",
+        "title": "Delete Palette",
+        "category": "Theme Generator",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "vsc-theme-generator.refreshView",
+        "title": "Refresh",
+        "category": "Theme Generator",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "vsc-theme-generator.refreshView",
+          "when": "view == themeGeneratorView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "vsc-theme-generator.loadPalette",
+          "when": "view == themeGeneratorView && viewItem == saved-palette",
+          "group": "palette@1"
+        },
+        {
+          "command": "vsc-theme-generator.deletePalette",
+          "when": "view == themeGeneratorView && viewItem == saved-palette",
+          "group": "palette@2"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "npm run check-types && npm run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "npm run check-types && npm run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.109.0",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "typescript-eslint": "^8.54.0",
+    "eslint": "^9.39.2",
+    "esbuild": "^0.27.2",
+    "npm-run-all": "^4.1.5",
+    "typescript": "^5.9.3",
+    "@vscode/test-cli": "^0.0.12",
+    "@vscode/test-electron": "^2.5.2"
+  }
+}
