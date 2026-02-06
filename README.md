@@ -1,4 +1,8 @@
-# VS Code Theme Generator
+![Logo-txt](https://github.com/user-attachments/assets/7a4845e1-f96e-4e1e-ba98-4f968fa5a8ba)
+
+---
+
+## VS Code Theme Generator
 
 Una extensión para Visual Studio Code que permite crear, personalizar y exportar temas visuales personalizados con control total sobre la paleta de colores.
 
@@ -14,6 +18,10 @@ VS Code Theme Generator es una herramienta completa para desarrolladores que des
 
 ### Generación Automática de Paletas
 
+![Random-tema-G](https://github.com/user-attachments/assets/c1931076-4296-4d33-872b-e1679af2c8fe)
+
+---
+
 La extensión implementa seis tipos diferentes de armonías cromáticas para generar automáticamente paletas coherentes y visualmente atractivas:
 
 - **Paleta Complementaria**: Colores opuestos en la rueda cromática para máximo contraste
@@ -27,10 +35,17 @@ La extensión implementa seis tipos diferentes de armonías cromáticas para gen
 
 Interface intuitiva con controles precisos para ajustar la paleta generada:
 
+<img width="1201" height="499" alt="image" src="https://github.com/user-attachments/assets/039973f7-4190-4c69-9f74-1ca924f9b84d" />
+
+---
+
 - **Deslizadores de Saturación**: Controla la intensidad de los colores
 - **Controles de Luminosidad**: Ajusta el brillo de cada color
 - **Variación de Tonalidad**: Modifica sutilmente la base cromática
 - **Vista Previa en Tiempo Real**: Observa los cambios inmediatamente en VS Code
+- **Vista de detalles**: Observa los cambios de cualquier elemento del editor
+
+
 
 ### Validación de Accesibilidad
 
@@ -40,13 +55,17 @@ Todos los colores generados cumplen con los estándares de contraste "WCAG AA", 
 
 - **Guardar Paletas**: Almacena tus paletas favoritas localmente
 - **Cargar Paletas Previas**: Recupera paletas guardadas anteriormente
-- **Editar Existentes**: Modifica cualquier paleta guardada
+- **Editar detalles existentes**: Modifica cualquier paleta guardada
 
 ### Importación y Exportación
 
 - **Importar Temas**: Lee archivos de tema JSON existentes
 - **Exportar Temas**: Guarda tus creaciones como temas de VS Code instalables
 - **Compatibilidad Completa**: Los temas exportados funcionan nativamente en VS Code
+
+---
+
+![Importar-tema](https://github.com/user-attachments/assets/963dd62f-7ba7-4e27-a277-498bbe7dca11)
 
 ---
 
@@ -200,7 +219,7 @@ Las contribuciones son bienvenidas y valoradas. Para reportar problemas o sugeri
 
 ## Licencia
 
-Este proyecto está licenciado bajo la **Licencia MIT**. Consulta el archivo LICENSE para más detalles.
+Este proyecto está licenciado bajo la **Licencia APACHE 2.0 January 2004**. Consulta el archivo LICENSE para más detalles.
 
 ---
 
