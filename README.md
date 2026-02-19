@@ -53,15 +53,16 @@ Todos los colores generados cumplen con los estándares de contraste "WCAG AA", 
 
 ### Gestión de Paletas Personalizadas
 
-- **Guardar Paletas**: Almacena tus paletas favoritas localmente
-- **Cargar Paletas Previas**: Recupera paletas guardadas anteriormente
-- **Editar detalles existentes**: Modifica cualquier paleta guardada
+- **Guardar Paletas**: Almacena tus paletas favoritas internamente en VS Code para acceso rápido.
+- **Nombrar Temas**: Asigna nombres personalizados a tus paletas para organizarlas mejor.
+- **Persistencia de Detalles**: Las ediciones manuales en "Theme Details" se guardan automáticamente con la paleta.
+- **Cargar Paletas Previas**: Recupera paletas guardadas anteriormente desde la lista lateral.
 
 ### Importación y Exportación
 
-- **Importar Temas**: Lee archivos de tema JSON existentes
-- **Exportar Temas**: Guarda tus creaciones como temas de VS Code instalables
-- **Compatibilidad Completa**: Los temas exportados funcionan nativamente en VS Code
+- **Importar Temas**: Carga archivos `.json` externos. El sistema detecta y preserva automáticamente los colores personalizados (overrides) para una fidelidad total.
+- **Exportar Temas**: Genera un archivo `.json` en la ubicación que elijas. Incluye todas tus personalizaciones manuales y colores base.
+- **Compatibilidad Completa**: Los temas exportados funcionan nativamente en VS Code.
 
 ---
 

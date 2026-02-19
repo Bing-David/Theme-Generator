@@ -877,6 +877,13 @@ export function mapPaletteToTheme(
     ),
   };
 
+  // Apply manual overrides if they exist
+  if (palette.overrides) {
+    Object.entries(palette.overrides).forEach(([key, color]) => {
+      workbenchColors[key] = color;
+    });
+  }
+
   // Colores de sintaxis con contraste garantizado
   const commentColor =
     type === "dark"
@@ -1000,7 +1007,7 @@ export async function exportThemeToFile(
 
   fs.writeFileSync(uri.fsPath, JSON.stringify(themeJson, null, 2), "utf-8");
   vscode.window.showInformationMessage(
-    `Theme exported: ${path.basename(uri.fsPath)}`,
+    `Theme exported: ${uri.fsPath}`,
   );
   return uri.fsPath;
 }
@@ -1054,13 +1061,27 @@ export async function importThemeFromFile(): Promise<Palette | undefined> {
   try {
     const content = fs.readFileSync(uri[0].fsPath, "utf-8");
     const themeData = JSON.parse(content);
+    const fileName = path.basename(uri[0].fsPath, path.extname(uri[0].fsPath));
 
     // Validate theme structure
     if (!themeData.colors && !themeData.tokenColors) {
       throw new Error("Invalid theme file: missing colors or tokenColors");
     }
 
+    if (themeData._palette) {
+      return {
+        ...themeData._palette,
+        id: `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        name: fileName, // Use filename as palette name
+        filePath: uri[0].fsPath,
+      };
+    }
+
+    // Otherwise, try to reconstruct the palette from theme colors
+    themeData.name = fileName;
     const palette = convertThemeToPalette(themeData);
+    palette.filePath = uri[0].fsPath;
+    
     vscode.window.showInformationMessage(`Theme imported: ${palette.name}`);
     return palette;
   } catch (error) {
@@ -1108,6 +1129,12 @@ export function convertThemeToPalette(themeData: any): Palette {
 
   const baseColor = colorInfos[0];
 
+  // Reconstruct overrides by comparing imported colors with generated ones
+  // This is a simplified approach; ideally we'd generate the theme from the base color
+  // and compare, but for now we'll store all non-standard colors as overrides if needed.
+  // A better approach for "edit persistence" is to just trust the imported colors map.
+  const overrides = { ...colors }; 
+
   return {
     id: `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     name,
@@ -1115,6 +1142,7 @@ export function convertThemeToPalette(themeData: any): Palette {
     harmony,
     colors: colorInfos,
     createdAt: Date.now(),
+    overrides, // Store all imported colors as overrides to ensure fidelity
   };
 }
 
@@ -1136,6 +1164,9 @@ function extractKeyColorsFromTheme(colors: Record<string, string>): string[] {
 
   // Priority order for color extraction
   const priorityKeys = [
+    "activityBar.background",
+    "titleBar.activeBackground",
+    "sideBar.background",
     "statusBar.background",
     "activityBar.activeBorder",
     "focusBorder",

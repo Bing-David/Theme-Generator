@@ -38,7 +38,12 @@ export class CustomPaletteManager {
   }
 
   async add(palette: Palette): Promise<void> {
-    this.palettes.push(palette);
+    const existingIndex = this.palettes.findIndex(p => p.id === palette.id);
+    if (existingIndex !== -1) {
+      this.palettes[existingIndex] = palette;
+    } else {
+      this.palettes.push(palette);
+    }
     await this.save();
   }
 
@@ -53,8 +58,11 @@ export class CustomPaletteManager {
   }
 
   async remove(id: string): Promise<boolean> {
+    console.log(`[PaletteManager] Removing palette: ${id}. Current count: ${this.palettes.length}`);
     const before = this.palettes.length;
     this.palettes = this.palettes.filter((p) => p.id !== id);
+    console.log(`[PaletteManager] After filter: ${this.palettes.length}`);
+    
     if (this.palettes.length !== before) {
       await this.save();
       return true;

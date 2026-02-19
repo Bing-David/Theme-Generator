@@ -19,7 +19,6 @@ export function getScript(): string {
     const baseColor = document.getElementById('baseColor');
     const baseColorText = document.getElementById('baseColorText');
     const editableStrip = document.getElementById('editableStrip');
-    const paletteGrid = document.getElementById('paletteGrid');
     const savedList = document.getElementById('savedList');
     const toast = document.getElementById('toast');
     const saturationSlider = document.getElementById('saturationSlider');
@@ -301,25 +300,25 @@ export function getScript(): string {
     saturationSlider.addEventListener('input', () => {
         saturationLevel = parseFloat(saturationSlider.value);
         saturationValue.textContent = saturationLevel.toFixed(2);
-        if (currentPalette) {
-            regeneratePalette();
-        }
+    });
+    saturationSlider.addEventListener('change', () => {
+        if (currentPalette) { regeneratePalette(); }
     });
 
     luminositySlider.addEventListener('input', () => {
         luminosityLevel = parseFloat(luminositySlider.value);
         luminosityValue.textContent = luminosityLevel.toFixed(2);
-        if (currentPalette) {
-            regeneratePalette();
-        }
+    });
+    luminositySlider.addEventListener('change', () => {
+        if (currentPalette) { regeneratePalette(); }
     });
 
     variationSlider.addEventListener('input', () => {
         variationLevel = parseFloat(variationSlider.value);
         variationValue.textContent = variationLevel.toFixed(2);
-        if (currentPalette) {
-            regeneratePalette();
-        }
+    });
+    variationSlider.addEventListener('change', () => {
+        if (currentPalette) { regeneratePalette(); }
     });
 
     syntaxSaturationSlider.addEventListener('input', () => {
@@ -329,6 +328,7 @@ export function getScript(): string {
             autoApplyPreview();
         }
     });
+
 
     autoPreviewCheckbox.addEventListener('change', () => {
         autoPreview = autoPreviewCheckbox.checked;
@@ -375,13 +375,61 @@ export function getScript(): string {
         }
     }
 
+    function updateStatusBar(palette) {
+        if (!palette) return;
+        const swatch = document.getElementById('paletteInfoSwatch');
+        const hexEl = document.getElementById('paletteInfoHex');
+        const harmonyEl = document.getElementById('paletteInfoHarmony');
+        if (!swatch || !hexEl || !harmonyEl) return;
+        const baseHex = palette.baseColor ? palette.baseColor.hex : (palette.colors && palette.colors[0] ? palette.colors[0].hex : '');
+        if (baseHex) {
+            swatch.style.background = baseHex;
+            hexEl.textContent = baseHex.toUpperCase();
+        }
+        harmonyEl.textContent = (palette.harmony || '').replace(/([A-Z])/g, ' $1').trim();
+    }
+
+    let richToastEl = null;
+    let richToastTimer = null;
+
+    function showToastRich(hexColor, harmony) {
+        if (!richToastEl) {
+            richToastEl = document.createElement('div');
+            richToastEl.className = 'toast-rich';
+            richToastEl.innerHTML =
+                '<div class="toast-rich-swatch" id="richToastSwatch"></div>' +
+                '<div class="toast-rich-content">' +
+                    '<div class="toast-rich-title" id="richToastHex"></div>' +
+                    '<div class="toast-rich-sub" id="richToastHarmony"></div>' +
+                '</div>';
+            document.body.appendChild(richToastEl);
+        }
+        const swatchEl = document.getElementById('richToastSwatch');
+        const hexEl = document.getElementById('richToastHex');
+        const harmonyEl = document.getElementById('richToastHarmony');
+        if (swatchEl) swatchEl.style.background = hexColor;
+        if (hexEl) hexEl.textContent = hexColor.toUpperCase();
+        if (harmonyEl) harmonyEl.textContent = (harmony || '').replace(/([A-Z])/g, ' $1').trim() || 'Random';
+        
+        if (richToastTimer) clearTimeout(richToastTimer);
+        richToastEl.classList.add('show');
+        richToastTimer = setTimeout(() => {
+            richToastEl.classList.remove('show');
+        }, 3000);
+    }
+
     // Harmony selection
+    const btnRandom = document.getElementById('btnRandomPalette');
     document.querySelectorAll('.harmony-option').forEach(opt => {
         opt.addEventListener('click', () => {
             document.querySelectorAll('.harmony-option').forEach(o => o.classList.remove('active'));
             opt.classList.add('active');
             currentHarmony = opt.dataset.harmony;
-            if (autoPreview) regeneratePalette();
+            if (currentPalette) {
+                regeneratePalette();
+            }
+            // Hint the Random button
+            btnRandom.classList.add('harmony-changed');
         });
     });
 
@@ -403,14 +451,7 @@ export function getScript(): string {
         }
     });
 
-    // Button handlers
-    document.getElementById('btnClearPreview').addEventListener('click', () => {
-        vscode.postMessage({ command: 'clearPreview' });
-        isPreviewActive = false;
-        resetWarning.classList.remove('show');
-        showToast('Theme reset to default');
-    });
-    
+
     document.getElementById('btnExport').addEventListener('click', () => {
         if (!currentPalette) return;
         vscode.postMessage({ command: 'exportTheme', themeName: currentPalette.name + ' Theme' });
@@ -427,6 +468,7 @@ export function getScript(): string {
     });
 
     document.getElementById('btnRandomPalette').addEventListener('click', () => {
+        btnRandom.classList.remove('harmony-changed');
         vscode.postMessage({ 
             command: 'random', 
             harmony: currentHarmony, 
@@ -503,6 +545,39 @@ export function getScript(): string {
                 container.appendChild(div);
             });
         });
+
+        // Search functionality
+        const themeSearch = document.getElementById('themeSearch');
+        if (themeSearch) {
+            themeSearch.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase().trim();
+                const groups = document.querySelectorAll('.theme-details-group');
+                
+                groups.forEach(group => {
+                    let hasVisible = false;
+                    const elements = group.querySelectorAll('.theme-element');
+                    
+                    elements.forEach(el => {
+                        const name = el.querySelector('.theme-element-name').textContent.toLowerCase();
+                        const desc = el.querySelector('.theme-element-desc').textContent.toLowerCase();
+                        const key = el.querySelector('.theme-color-preview').getAttribute('data-key').toLowerCase();
+                        
+                        if (term === '' || name.includes(term) || desc.includes(term) || key.includes(term)) {
+                            el.style.display = 'flex';
+                            hasVisible = true;
+                        } else {
+                            el.style.display = 'none';
+                        }
+                    });
+                    
+                    if (term !== '' && !hasVisible) {
+                        group.style.display = 'none';
+                    } else {
+                        group.style.display = 'block';
+                    }
+                });
+            });
+        }
     }
 
     function rgbToHex(rgb) {
@@ -515,86 +590,34 @@ export function getScript(): string {
         }).join('');
     }
 
-    function updateThemeDetailsFromPalette(palette) {
-        if (!palette || !palette.colors) return;
+    function updateThemeDetailsFromPalette(themeColors) {
+        const overlay = document.getElementById('themeDetailsOverlay');
+        if (!themeColors) {
+            // No palette loaded — show the disabled overlay
+            if (overlay) overlay.classList.remove('hidden');
+            return;
+        }
+        // Palette loaded — hide overlay and apply real colors
+        if (overlay) overlay.classList.add('hidden');
         
-        const base = palette.colors[0]?.hex || '#1e1e1e';
-        const accent = palette.colors[1]?.hex || '#007acc';
-        const secondary = palette.colors[2]?.hex || '#4ec9b0';
-        const tertiary = palette.colors[3]?.hex || '#ce9178';
-        
-        const colorMap = {
-            'editor.background': base,
-            'editor.foreground': getContrastColor(base, 0.8),
-            'editor.lineHighlightBackground': adjustBrightness(base, 5),
-            'editor.selectionBackground': accent + '44',
-            'editor.findMatchBackground': accent + '66',
-            'editorCursor.foreground': accent,
-            'editorLineNumber.foreground': adjustBrightness(getContrastColor(base, 0.8), -30),
-            'editorLineNumber.activeForeground': getContrastColor(base, 0.8),
-            'editorIndentGuide.background': adjustBrightness(base, 15),
-            'editorIndentGuide.activeBackground': adjustBrightness(base, 25),
-            'editorRuler.foreground': adjustBrightness(base, 15),
-            'editorWhitespace.foreground': adjustBrightness(base, 10),
-            'focusBorder': accent,
-            'panel.border': adjustBrightness(base, 10),
-            'sideBar.border': adjustBrightness(base, 10),
-            'editorGroup.border': adjustBrightness(base, 10),
-            'tab.border': adjustBrightness(base, 10),
-            'titleBar.border': adjustBrightness(base, 10),
-            'activityBar.background': adjustBrightness(base, -10),
-            'activityBar.foreground': getContrastColor(adjustBrightness(base, -10), 0.8),
-            'activityBar.activeBorder': accent,
-            'sideBar.background': adjustBrightness(base, -5),
-            'sideBar.foreground': getContrastColor(adjustBrightness(base, -5), 0.8),
-            'sideBarSectionHeader.background': adjustBrightness(base, 3),
-            'statusBar.background': accent,
-            'statusBar.foreground': getContrastColor(accent, 0.8),
-            'titleBar.activeBackground': adjustBrightness(base, -8),
-            'titleBar.activeForeground': getContrastColor(adjustBrightness(base, -8), 0.8),
-            'panel.background': base,
-            'tab.activeBackground': base,
-            'tab.activeForeground': getContrastColor(base, 0.8),
-            'tab.inactiveBackground': adjustBrightness(base, -5),
-            'tab.activeBorder': accent,
-            'list.activeSelectionBackground': accent + '44',
-            'list.activeSelectionForeground': getContrastColor(base, 0.8),
-            'list.hoverBackground': adjustBrightness(base, 5),
-            'list.focusBackground': accent + '33',
-            'list.inactiveSelectionBackground': accent + '22',
-            'input.background': adjustBrightness(base, 5),
-            'input.foreground': getContrastColor(base, 0.8),
-            'input.border': accent + '66',
-            'dropdown.background': adjustBrightness(base, 8),
-            'dropdown.foreground': getContrastColor(base, 0.8),
-            'button.background': accent,
-            'button.foreground': getContrastColor(accent, 0.8),
-            'terminal.background': base,
-            'terminal.foreground': getContrastColor(base, 0.8),
-            'terminal.ansiBlack': '#000000',
-            'terminal.ansiRed': '#cd3131',
-            'terminal.ansiGreen': '#0dbc79',
-            'terminal.ansiYellow': '#e5e510',
-            'terminal.ansiBlue': '#2472c8',
-            'terminal.ansiMagenta': '#bc3fbc',
-            'terminal.ansiCyan': '#11a8cd',
-            'terminal.ansiWhite': '#e5e5e5',
-            'entity.name.function': accent,
-            'keyword.control': secondary,
-            'string.quoted': tertiary,
-            'constant.numeric': tertiary,
-            'comment.line': adjustBrightness(getContrastColor(base, 0.8), -30)
-        };
-
-        Object.keys(colorMap).forEach(key => {
+        // Use the server-computed colors directly — they match exactly what the preview applies
+        Object.keys(themeColors).forEach(key => {
             const preview = document.querySelector('[data-key="' + key + '"]');
             if (preview) {
-                preview.style.background = colorMap[key];
+                let color = themeColors[key];
+                // Strip alpha suffix for display (colors like #aabbcc44 -> #aabbcc)
+                if (color && color.length === 9) {
+                    color = color.slice(0, 7);
+                } else if (color && color.length === 5) {
+                    color = color.slice(0, 4);
+                }
+                preview.style.background = color || '#4a90d9';
             }
         });
     }
 
-    function renderPalette(palette) {
+
+    function renderPalette(palette, themeColors) {
         currentPalette = palette;
         const colors = palette.colors;
 
@@ -606,46 +629,18 @@ export function getScript(): string {
             const div = document.createElement('div');
             div.className = 'strip-color';
             div.style.background = c.hex;
-            div.innerHTML = '<span class="strip-color-info">' + c.hex + '</span>';
+            const contrast = getContrastColor(c.hex, contrastLevel);
+            div.innerHTML =
+                '<div class="strip-label" style="color:' + contrast + '">' +
+                    '<span class="strip-hex">' + c.hex.toUpperCase() + '</span>' +
+                    '<span class="strip-name">' + (c.name || 'Color ' + (index + 1)) + '</span>' +
+                '</div>';
             div.addEventListener('click', () => editStripColor(index, c.hex));
             editableStrip.appendChild(div);
         });
 
-        paletteGrid.innerHTML = '';
-        colors.forEach((c, index) => {
-            const contrast = getContrastColor(c.hex, contrastLevel);
-            const card = document.createElement('div');
-            card.className = 'color-card editable';
-            card.innerHTML =
-                '<div class="color-swatch" style="background:' + c.hex + '">' +
-                    '<span class="copy-hint" style="color:' + contrast + '">Click to copy</span>' +
-                '</div>' +
-                '<div class="color-meta">' +
-                    '<div class="hex">' + c.hex + '</div>' +
-                    '<div class="name" style="color:' + adjustOpacity(contrast, 0.7) + '">' + (c.name || 'Color ' + (index + 1)) + '</div>' +
-                '</div>';
-            
-            const colorSwatch = card.querySelector('.color-swatch');
-            
-            // Copy on click in the swatch
-            colorSwatch.addEventListener('click', (e) => {
-                e.stopPropagation();
-                navigator.clipboard.writeText(c.hex).catch(() => {});
-                showToast('Copied ' + c.hex);
-            });
-            
-            // Edit on click in the meta area or anywhere else on card
-            card.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (!e.target.closest('.copy-hint')) {
-                    editColor(index, c.hex);
-                }
-            });
-            
-            paletteGrid.appendChild(card);
-        });
-
-        updateThemeDetailsFromPalette(palette);
+        // Use server-computed themeColors if available, fallback gracefully
+        updateThemeDetailsFromPalette(themeColors);
 
         if (autoPreview) {
             autoApplyPreview();
@@ -752,6 +747,7 @@ export function getScript(): string {
                     '<span class="saved-card-name">' + p.name + '</span>' +
                     '<span class="saved-card-meta">' + p.harmony + '</span>' +
                 '</div>' +
+                (p.filePath ? '<div class="saved-card-path" title="' + p.filePath + '">' + p.filePath + '</div>' : '') +
                 '<div class="saved-card-strip">' + strip + '</div>' +
                 '<div class="saved-card-actions">' +
                     '<button class="btn load-btn">Load</button>' +
@@ -775,12 +771,42 @@ export function getScript(): string {
         const msg = e.data;
         switch (msg.command) {
             case 'updatePalette':
-                renderPalette(msg.palette);
+                renderPalette(msg.palette, msg.themeColors);
+                updateStatusBar(msg.palette);
                 break;
             case 'savedPalettes':
                 renderSaved(msg.palettes);
                 break;
+            case 'clearPreview':
+                resetUIState();
+                break;
         }
+    });
+
+    function resetUIState() {
+        currentPalette = null;
+        editableStrip.innerHTML = '';
+        
+        // Show disabled overlay for theme details
+        const overlay = document.getElementById('themeDetailsOverlay');
+        if (overlay) overlay.classList.remove('hidden');
+
+        // Reset theme details previews to default color
+        document.querySelectorAll('.theme-color-preview').forEach(el => {
+            el.style.background = '#4a90d9';
+        });
+
+        // Hide reset warning if visible
+        if (resetWarning) resetWarning.classList.remove('show');
+        
+        isPreviewActive = false;
+    }
+
+    // Button handlers
+    document.getElementById('btnClearPreview').addEventListener('click', () => {
+        vscode.postMessage({ command: 'clearPreview' });
+        resetUIState();
+        showToast('Theme reset to default');
     });
 
     vscode.postMessage({ command: 'getSavedPalettes' });

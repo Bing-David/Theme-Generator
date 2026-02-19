@@ -80,39 +80,86 @@ export class PalettePanel {
                     msg.syntaxSaturation
                 );
                 break;
-            case 'random':
+            case 'random': {
+                const randomBase = randomHex();
                 this.generateAndSend(
-                    randomHex(), 
+                    randomBase,
                     msg.harmony ?? 'complementary', 
                     msg.contrastLevel,
                     msg.saturation,
                     msg.luminosity,
                     msg.variation,
-                    msg.syntaxSaturation
+                    msg.syntaxSaturation,
+                    true,
+                    randomBase
                 );
                 break;
+            }
             case 'editColor':
                 if (this.currentPalette && msg.index >= 0) {
                     this.currentPalette.colors[msg.index].hex = msg.newColor;
                     this.currentPalette.colors[msg.index].name = `Color ${msg.index + 1}`;
-                    this.panel.webview.postMessage({ command: 'updatePalette', palette: this.currentPalette });
-                    
+                    const editTheme = mapPaletteToTheme(this.currentPalette);
+                    this.panel.webview.postMessage({
+                        command: 'updatePalette',
+                        palette: this.currentPalette,
+                        themeColors: editTheme.colors
+                    });
                     // Aplicar preview si está habilitado
                     if (msg.autoPreview) {
-                        const theme = mapPaletteToTheme(this.currentPalette);
-                        await applyThemePreview(theme);
+                        await applyThemePreview(editTheme);
                     }
+                }
+                break;
+            case 'updateThemeElement':
+                if (this.currentPalette && msg.key && msg.color) {
+                    if (!this.currentPalette.overrides) {
+                        this.currentPalette.overrides = {};
+                    }
+                    this.currentPalette.overrides[msg.key] = msg.color;
+                    const theme = mapPaletteToTheme(this.currentPalette);
+                    await applyThemePreview(theme);
                 }
                 break;
             case 'savePalette':
                 if (this.currentPalette) {
-                    const name = msg.name || this.currentPalette.name;
-                    this.currentPalette.name = name;
-                    await this.paletteManager.add({ ...this.currentPalette });
-                    this.sendSavedPalettes();
+                    const name = await vscode.window.showInputBox({
+                        prompt: 'Enter a name for your palette',
+                        value: msg.name || this.currentPalette.name,
+                        placeHolder: 'My Awesome Theme'
+                    });
+                    
+                    if (name) {
+                        // If name changed, treat as new palette (Save As)
+                        if (name !== this.currentPalette.name) {
+                            this.currentPalette.id = Date.now().toString();
+                            this.currentPalette.name = name;
+                            vscode.window.showInformationMessage(`Saved as new palette: "${name}"`);
+                        } else {
+                            vscode.window.showInformationMessage(`Palette updated: "${name}"`);
+                        }
+                        
+                        await this.paletteManager.add({ ...this.currentPalette });
+                        this.sendSavedPalettes();
+                        
+                        // Update the name in the webview
+                        const theme = mapPaletteToTheme(this.currentPalette);
+                        this.panel.webview.postMessage({
+                            command: 'updatePalette',
+                            palette: this.currentPalette,
+                            themeColors: theme.colors
+                        });
+                    }
                 }
                 break;
             case 'deletePalette':
+                console.log(`[WebviewPanel] Received delete request for ID: ${msg.id}`);
+                // If deleting the currently active palette, clear the preview
+                if (this.currentPalette && this.currentPalette.id === msg.id) {
+                    await clearThemePreview();
+                    this.currentPalette = undefined;
+                    this.panel.webview.postMessage({ command: 'clearPreview' });
+                }
                 await this.paletteManager.remove(msg.id);
                 this.sendSavedPalettes();
                 break;
@@ -120,7 +167,12 @@ export class PalettePanel {
                 const palette = this.paletteManager.getById(msg.id);
                 if (palette) {
                     this.currentPalette = palette;
-                    this.panel.webview.postMessage({ command: 'updatePalette', palette });
+                    const loadTheme = mapPaletteToTheme(palette);
+                    this.panel.webview.postMessage({
+                        command: 'updatePalette',
+                        palette,
+                        themeColors: loadTheme.colors
+                    });
                 }
                 break;
             }
@@ -140,7 +192,15 @@ export class PalettePanel {
                 const palette = await importThemeFromFile();
                 if (palette) {
                     this.currentPalette = palette;
-                    this.panel.webview.postMessage({ command: 'updatePalette', palette });
+                    await this.paletteManager.add(palette);
+                    this.sendSavedPalettes();
+                    
+                    const importTheme = mapPaletteToTheme(palette);
+                    this.panel.webview.postMessage({
+                        command: 'updatePalette',
+                        palette,
+                        themeColors: importTheme.colors
+                    });
                     this.notifyPaletteChanged();
                 }
                 break;
@@ -156,7 +216,12 @@ export class PalettePanel {
                 const custom = this.paletteManager.createCustomPalette(msg.name, msg.colors);
                 await this.paletteManager.add(custom);
                 this.currentPalette = custom;
-                this.panel.webview.postMessage({ command: 'updatePalette', palette: custom });
+                const customTheme = mapPaletteToTheme(custom);
+                this.panel.webview.postMessage({
+                    command: 'updatePalette',
+                    palette: custom,
+                    themeColors: customTheme.colors
+                });
                 this.sendSavedPalettes();
                 break;
             }
@@ -190,18 +255,24 @@ export class PalettePanel {
         saturation?: number,
         luminosity?: number,
         variation?: number,
-        syntaxSaturation?: number
+        syntaxSaturation?: number,
+        isRandom: boolean = false,
+        baseHex?: string
     ): void {
         this.currentPalette = generatePalette(baseColor, harmony, undefined, {
             saturation,
             luminosity,
             variation
         });
+        const theme = mapPaletteToTheme(this.currentPalette, undefined, syntaxSaturation);
         this.panel.webview.postMessage({
             command: 'updatePalette',
             palette: this.currentPalette,
+            themeColors: theme.colors,
             contrastLevel,
-            syntaxSaturation
+            syntaxSaturation,
+            isRandom,
+            baseHex: baseHex ?? baseColor
         });
         this.notifyPaletteChanged();
     }
@@ -222,9 +293,11 @@ export class PalettePanel {
 
     public updatePalette(palette: Palette): void {
         this.currentPalette = palette;
+        const theme = mapPaletteToTheme(palette);
         this.panel.webview.postMessage({
             command: 'updatePalette',
             palette: this.currentPalette,
+            themeColors: theme.colors,
         });
     }
 

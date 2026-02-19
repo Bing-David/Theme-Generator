@@ -16,12 +16,21 @@ ${styles}
     <!-- Header -->
     <header class="header">
         <div class="header-left">
-            <div class="header-logo">
-                TG
-            </div>
             <span class="header-title">THEME GENERATOR</span>
         </div>
     </header>
+
+    <!-- Palette Info Bar -->
+    <div class="palette-info-bar" id="paletteInfoBar">
+        <div class="palette-info-left">
+            <div class="palette-info-swatch" id="paletteInfoSwatch"></div>
+            <span class="palette-info-hex" id="paletteInfoHex">—</span>
+        </div>
+        <div class="palette-info-right">
+            <span class="palette-info-label">Harmony</span>
+            <span class="palette-info-harmony" id="paletteInfoHarmony">—</span>
+        </div>
+    </div>
 
     <div class="main-content">
         <!-- Center Panel - Controles + Paleta -->
@@ -32,14 +41,6 @@ ${styles}
                     <button class="btn btn-danger btn-block" id="btnClearPreview">Clear Preview & Reset</button>
                 </div>
 
-                <!-- Base Color -->
-                <div class="control-group">
-                    <div class="control-group-title">Base Color</div>
-                    <div class="color-input-row">
-                        <input type="color" id="baseColor" value="#4a90d9" />
-                        <input type="text" id="baseColorText" value="#4a90d9" maxlength="7" />
-                    </div>
-                </div>
 
                 <!-- Harmony Type -->
                 <div class="control-group">
@@ -79,6 +80,15 @@ ${styles}
                     </div>
                 </div>
 
+                <!-- Base Color -->
+                <div class="control-group">
+                    <div class="control-group-title">Base Color</div>
+                    <div class="color-input-row">
+                        <input type="color" id="baseColor" value="#4a90d9" />
+                        <input type="text" id="baseColorText" value="#4a90d9" maxlength="7" />
+                    </div>
+                </div>
+
                 <!-- Actions -->
                 <div class="control-group">
                     <div class="checkbox-row">
@@ -105,9 +115,6 @@ ${styles}
 
                 <!-- Editable Color Strip -->
                 <div class="editable-strip" id="editableStrip"></div>
-
-                <!-- Full Palette Grid -->
-                <div class="palette-full" id="paletteGrid"></div>
             </div>
         </div>
 
@@ -118,8 +125,16 @@ ${styles}
                 <div id="savedList"></div>
             </div>
 
-            <div class="control-group">
+            <div class="control-group theme-details-wrapper">
+                <div id="themeDetailsOverlay" class="theme-details-overlay">
+                    <div class="theme-details-overlay-content">
+                        <span>Generate or load a palette<br>to see theme details</span>
+                    </div>
+                </div>
                 <div class="control-group-title">Theme Details</div>
+                <div class="search-box">
+                    <input type="text" id="themeSearch" placeholder="Search properties..." autocomplete="off" />
+                </div>
 
                 <div class="theme-details-group">
                     <div class="theme-details-subtitle">Editor Colors</div>

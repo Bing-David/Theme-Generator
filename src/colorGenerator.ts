@@ -39,6 +39,8 @@ export interface Palette {
     harmony: HarmonyType;
     colors: ColorInfo[];
     createdAt: number;
+    filePath?: string;
+    overrides?: Record<string, string>;
 }
 
 // ── Conversions ────────────────────────────────────────────────────────────
@@ -217,6 +219,24 @@ const HARMONY_GENERATORS: Record<HarmonyType, (base: HSL) => HSL[]> = {
     'monochromatic': generateMonochromatic,
 };
 
+function seededRng(seed: number): () => number {
+    let s = seed >>> 0;
+    return () => {
+        s = (s + 0x6D2B79F5) >>> 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 0x100000000;
+    };
+}
+
+function hexToSeed(hex: string): number {
+    let hash = 5381;
+    for (let i = 0; i < hex.length; i++) {
+        hash = ((hash << 5) + hash) ^ hex.charCodeAt(i);
+    }
+    return Math.abs(hash);
+}
+
 export function generatePalette(
     baseHex: string,
     harmony: HarmonyType,
@@ -232,8 +252,9 @@ export function generatePalette(
     const labels = HARMONY_LABELS[harmony];
     const hslColors = generator(baseHsl);
 
-    // Aplicar ajustes opcionales
-    const adjustedColors = hslColors.map(hsl => {
+    // Apply optional adjustments
+    const baseSeed = hexToSeed(baseHex);
+    const adjustedColors = hslColors.map((hsl, colorIndex) => {
         let adjusted = { ...hsl };
         
         if (options?.saturation !== undefined) {
@@ -246,10 +267,11 @@ export function generatePalette(
         }
         
         if (options?.variation !== undefined && options.variation > 0) {
+            const rng = seededRng(baseSeed + colorIndex * 997);
             const variance = options.variation * 100;
-            adjusted.h = rotateHue(adjusted.h, Math.random() * variance * 2 - variance);
-            adjusted.s = Math.max(0, Math.min(100, adjusted.s + (Math.random() * variance * 2 - variance)));
-            adjusted.l = Math.max(10, Math.min(90, adjusted.l + (Math.random() * variance * 0.5 - variance * 0.25)));
+            adjusted.h = rotateHue(adjusted.h, rng() * variance * 2 - variance);
+            adjusted.s = Math.max(0, Math.min(100, adjusted.s + (rng() * variance * 2 - variance)));
+            adjusted.l = Math.max(10, Math.min(90, adjusted.l + (rng() * variance * 0.5 - variance * 0.25)));
         }
         
         return adjusted;
