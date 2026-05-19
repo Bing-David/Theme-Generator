@@ -55,7 +55,6 @@ export class ThemeGeneratorProvider implements vscode.TreeDataProvider<TreeItem>
             item.iconPath = element.iconPath;
         }
 
-        // Color preview for palette colors
         if (element.type === 'color' && element.colorHex) {
             item.iconPath = new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('editor.foreground'));
             item.description = element.colorHex;

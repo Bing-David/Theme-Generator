@@ -1,244 +1,184 @@
-![Logo-txt](https://github.com/user-attachments/assets/7a4845e1-f96e-4e1e-ba98-4f968fa5a8ba)
+![Theme Generator](https://github.com/user-attachments/assets/7a4845e1-f96e-4e1e-ba98-4f968fa5a8ba)
 
----
+# VSC Theme Generator
 
-## VS Code Theme Generator
+Generate, customize, preview, import, and export Visual Studio Code color themes from an interactive palette editor.
 
-Una extensión para Visual Studio Code que permite crear, personalizar y exportar temas visuales personalizados con control total sobre la paleta de colores.
+## Overview
 
----
+VSC Theme Generator is a VS Code extension focused on fast theme creation with visual controls. It combines harmony-based palette generation, live theme preview, manual UI/token editing, and round-trip import/export so you can keep refining a theme over time.
 
-## Descripción General
+## Features
 
-VS Code Theme Generator es una herramienta completa para desarrolladores que desean crear temas visuales únicos y personalizados. La extensión proporciona un generador inteligente de paletas de colores basado en teoría cromática, junto con un editor visual interactivo que permite ajustar cada aspecto del tema en tiempo real.
+### Palette generation
 
----
+- Generate palettes from a base color using these harmony modes:
+  - Complementary
+  - Analogous
+  - Triadic
+  - Split-complementary
+  - Tetradic
+  - Monochromatic
+- Generate a random palette with one click
 
-## Funcionalidades Principales
+### Color controls
 
-### Generación Automática de Paletas
+- Adjust `Saturation`, `Luminosity`, and `Variation`
+- Adjust `Syntax` intensity for token colors independently from the base palette
+- Keep palette controls synchronized with generated palettes
 
-![Random-tema-G](https://github.com/user-attachments/assets/c1931076-4296-4d33-872b-e1679af2c8fe)
+### Visual editor
 
----
+- Live webview-based palette editor
+- Editable palette strip for direct color changes
+- Theme Details panel for manual UI color overrides
+- Syntax Tokens panel for token-level color adjustments
+- Search inside theme properties
 
-La extensión implementa seis tipos diferentes de armonías cromáticas para generar automáticamente paletas coherentes y visualmente atractivas:
+### Preview and persistence
 
-- **Paleta Complementaria**: Colores opuestos en la rueda cromática para máximo contraste
-- **Paleta Análoga**: Colores adyacentes para una apariencia armónica y cohesiva
-- **Paleta Tríada**: Tres colores equidistantes para equilibrio visual
-- **Paleta Tetrádica**: Cuatro colores para variedad controlada
-- **Paleta Monocromática**: Variaciones de un único color
-- **Paleta Aleatoria**: Combinaciones inesperadas para inspiración creativa
+- Apply the current theme as a live VS Code preview
+- Clear preview at any time
+- Save palettes inside VS Code for later reuse
+- Load and delete saved palettes from the activity bar view
 
-### Editor Visual Interactivo
+### Import and export
 
-Interface intuitiva con controles precisos para ajustar la paleta generada:
+- Export themes as standard VS Code `.json` color theme files
+- Import previously exported themes back into the editor
+- Preserve palette metadata on export for improved round-trip editing
 
-<img width="1201" height="499" alt="image" src="https://github.com/user-attachments/assets/039973f7-4190-4c69-9f74-1ca924f9b84d" />
+## How It Works
 
----
+1. Open the palette generator.
+2. Pick a harmony mode or generate a random palette.
+3. Refine the palette with the color property sliders.
+4. Edit individual UI colors or syntax token colors if needed.
+5. Preview the result in VS Code.
+6. Save the palette or export it as a theme file.
 
-- **Deslizadores de Saturación**: Controla la intensidad de los colores
-- **Controles de Luminosidad**: Ajusta el brillo de cada color
-- **Variación de Tonalidad**: Modifica sutilmente la base cromática
-- **Vista Previa en Tiempo Real**: Observa los cambios inmediatamente en VS Code
-- **Vista de detalles**: Observa los cambios de cualquier elemento del editor
+## Commands
 
+The extension contributes these commands:
 
+- `Theme Generator: Open Palette Generator`
+- `Theme Generator: Generate Random Palette`
+- `Theme Generator: Preview Current Theme`
+- `Theme Generator: Clear Theme Preview`
+- `Theme Generator: Export Current Theme`
+- `Theme Generator: Save Current Palette`
+- `Theme Generator: Load Palette`
+- `Theme Generator: Delete Palette`
+- `Theme Generator: Refresh`
 
-### Validación de Accesibilidad
+## Sidebar View
 
-Todos los colores generados cumplen con los estándares de contraste "WCAG AA", garantizando que los temas sean accesibles para usuarios con diferentes capacidades visuales.
+The extension adds a `Theme Generator` view container in the VS Code activity bar. From there you can:
 
-### Gestión de Paletas Personalizadas
+- Open the full palette editor
+- Generate a random palette
+- Import a theme
+- Preview or clear the current theme
+- Access saved palettes
 
-- **Guardar Paletas**: Almacena tus paletas favoritas internamente en VS Code para acceso rápido.
-- **Nombrar Temas**: Asigna nombres personalizados a tus paletas para organizarlas mejor.
-- **Persistencia de Detalles**: Las ediciones manuales en "Theme Details" se guardan automáticamente con la paleta.
-- **Cargar Paletas Previas**: Recupera paletas guardadas anteriormente desde la lista lateral.
+## Development
 
-### Importación y Exportación
+### Requirements
 
-- **Importar Temas**: Carga archivos `.json` externos. El sistema detecta y preserva automáticamente los colores personalizados (overrides) para una fidelidad total.
-- **Exportar Temas**: Genera un archivo `.json` en la ubicación que elijas. Incluye todas tus personalizaciones manuales y colores base.
-- **Compatibilidad Completa**: Los temas exportados funcionan nativamente en VS Code.
+- VS Code `^1.85.0`
+- Node.js 20+
+- npm | Caution, another package manager is recommended
 
----
-
-![Importar-tema](https://github.com/user-attachments/assets/963dd62f-7ba7-4e27-a277-498bbe7dca11)
-
----
-
-## Características Técnicas
-
-### Requisitos del Sistema
-
-- Visual Studio Code: **1.50.0** o superior
-- Node.js: **14.0.0** o superior
-- npm: **6.0.0** o superior
-
-### Dependencias Principales
-
-```json
-{
-  "vscode": "^1.50.0",
-  "chroma-js": "^2.4.2",
-  "wcag-contrast": "^4.0.0"
-}
-```
-
-### Tecnologías Utilizadas
-
-- **TypeScript**: Desarrollo seguro y escalable
-- **VS Code API**: Integración profunda con el editor
-- **Webview**: Interface visual moderna y responsiva
-- **HTML5 / CSS3**: Diseño limpio y profesional
-
----
-
-## Estructura del Repositorio
-
-```
-Theme-Generator/
-├── src/
-│   ├── extension.ts              # Punto de entrada y registro de comandos
-│   ├── colorGenerator.ts         # Motor de generación de paletas
-│   ├── themeExporter.ts          # Conversión paleta → tema VS Code
-│   ├── customPalette.ts          # Gestión de persistencia local
-│   ├── webviewPanel.ts           # Control del panel webview
-│   ├── sidebarProvider.ts        # Proveedor de la vista de árbol
-│   ├── webviewHtml.ts            # Template HTML de la interface
-│   ├── webviewStyle.ts           # Estilos CSS del webview
-│   └── webviewScript.ts          # Lógica cliente-side del webview
-├── package.json                   # Metadatos y configuración
-├── tsconfig.json                  # Configuración de TypeScript
-├── webpack.config.js             # Empaquetación y bundling
-└── README.md                      # Documentación del proyecto
-```
-
-### Descripción de Módulos Principales
-
-**extension.ts**
-Punto de entrada de la extensión. Registra todos los comandos de VS Code y gestiona el ciclo de vida de la aplicación.
-
-**colorGenerator.ts**
-Implementa la lógica de generación de paletas cromáticas. Contiene algoritmos basados en teoría del color para crear combinaciones armónicas y validar contraste WCAG.
-
-**themeExporter.ts**
-Mapea la paleta de colores generada al formato de tema nativo de VS Code. Maneja tanto la exportación de temas como la importación de archivos existentes.
-
-**customPalette.ts**
-Gestiona el almacenamiento persistente de paletas en el estado global de VS Code, permitiendo recuperar paletas guardadas entre sesiones.
-
-**webviewPanel.ts**
-Controla el ciclo de vida del panel webview y gestiona la comunicación entre la extensión y la interface visual.
-
-**sidebarProvider.ts**
-Proporciona el árbol de vistas que aparece en la barra lateral de VS Code, mostrando paletas disponibles y opciones rápidas.
-
----
-
-## Instalación y Configuración
-
-### Instalación de Dependencias
+### Install dependencies
 
 ```bash
 npm install
 ```
 
-### Compilación
+### Type check
 
 ```bash
-npm run build
+npm run check-types
 ```
 
-```Publicacion
+### Lint
+
+```bash
+npm run lint
+```
+
+### Build
+
+```bash
+npm run compile
+```
+
+### Production package build
+
+```bash
+vsce package
+npm run package
+```
+
+### Watch mode
+
+```bash
+npm run watch
+```
+
+### Run the extension
+
+Press `F5` in VS Code to launch an Extension Development Host.
+
+## Project Structure
+
+```text
+Theme-Generator/
+├── src/
+│   ├── extension.ts
+│   ├── colorGenerator.ts
+│   ├── customPalette.ts
+│   ├── sidebarProvider.ts
+│   ├── themeExporter.ts
+│   ├── webviewHtml.ts
+│   ├── webviewPanel.ts
+│   ├── webviewScript.ts
+│   └── webviewStyle.ts
+├── media/
+├── dist/
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
+## Notes
+
+- Themes exported from the current extension version preserve palette metadata for better re-import behavior.
+- Older theme files that do not include embedded palette metadata may import approximately rather than perfectly.
+- Manual color overrides in Theme Details are included in exported themes.
+
+## Publishing
+
+If you want to package the extension manually:
+
+```bash
 npm install -g vsce
 vsce package
 ```
 
-O utiliza el atajo de teclado **Ctrl+Shift+B** en VS Code.
+## Contributing
 
-### Ejecución en Modo Debug
+Issues and pull requests are welcome. If you want to contribute:
 
-Presiona **F5** para ejecutar la extensión en una instancia de desarrollo de VS Code.
+1. Open an issue describing the bug or improvement.
+2. Create a branch with your changes.
+3. Submit a pull request with a clear summary.
 
----
+## License
 
-## Uso Básico
+Licensed under the Apache License 2.0. See [LICENSE](LICENSE).
 
-**1. Abrir Theme Generator**
+## Author
 
-Presiona **Ctrl+Shift+P** para abrir la paleta de comandos y busca "Theme Generator".
-
-**2. Generar una Paleta**
-
-Selecciona el tipo de armonía cromática deseada y el generador creará automáticamente una paleta.
-
-**3. Personalizar**
-
-Utiliza los controles de la barra lateral para ajustar saturación, luminosidad y variación según tus preferencias.
-
-**4. Guardar**
-
-Guarda la paleta para uso futuro o exporta directamente como tema de VS Code.
-
----
-
-## Configuración
-
-La extensión respeta los ajustes estándar de VS Code. Accede a los parámetros de configuración presionando **Ctrl+,** y busca "Theme Generator" para ver las opciones disponibles.
-
----
-
-## Problemas Conocidos
-
-No hay problemas conocidos reportados en la versión actual.
-
----
-
-## Notas de Versión
-
-### Versión 1.0.0
-
-Lanzamiento inicial con funcionalidad completa:
-
-- Generador de paletas con 6 tipos de armonía
-- Editor visual interactivo
-- Validación de accesibilidad WCAG AA
-- Importación y exportación de temas
-- Almacenamiento persistente de paletas
-- Interface webview responsiva
-
----
-
-## Contribuciones
-
-Las contribuciones son bienvenidas y valoradas. Para reportar problemas o sugerir mejoras:
-
-1. Abre un **Issue** describiendo el problema o sugerencia
-2. Envía un **Pull Request** con tus cambios
-3. Asegúrate de seguir los estándares de código existentes
-
----
-
-## Licencia
-
-Este proyecto está licenciado bajo la **Licencia APACHE 2.0 January 2004**. Consulta el archivo LICENSE para más detalles.
-
----
-
-## Autor
-
-**Jeiler David**
-
-Desarrollador y creador de Theme Generator.
-
-- GitHub: [@Bing-david](https://github.com/Bing-david)
-
----
-
-## Soporte y Contacto
-
-Si encuentras problemas o tienes preguntas, por favor abre un issue en el repositorio de GitHub 
+Jeiler David  
+GitHub: [@Bing-David](https://github.com/Bing-David)

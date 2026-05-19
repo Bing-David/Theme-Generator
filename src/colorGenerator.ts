@@ -38,6 +38,12 @@ export interface Palette {
     baseColor: ColorInfo;
     harmony: HarmonyType;
     colors: ColorInfo[];
+    originalColors?: ColorInfo[]; 
+    options?: {
+        saturation: number;
+        luminosity: number;
+        variation: number;
+    };
     createdAt: number;
     filePath?: string;
     overrides?: Record<string, string>;
@@ -237,6 +243,47 @@ function hexToSeed(hex: string): number {
     return Math.abs(hash);
 }
 
+function applyVariationToHslColors(
+    hslColors: HSL[],
+    baseHex: string,
+    variation: number
+): HSL[] {
+    if (variation <= 0) {
+        return hslColors.map(hsl => ({ ...hsl }));
+    }
+
+    const baseSeed = hexToSeed(baseHex);
+    return hslColors.map((hsl, colorIndex) => {
+        const adjusted = { ...hsl };
+        const rng = seededRng(baseSeed + colorIndex * 997);
+        const variance = variation * 100;
+
+        adjusted.h = rotateHue(adjusted.h, rng() * variance * 2 - variance);
+        adjusted.s = Math.max(0, Math.min(100, adjusted.s + (rng() * variance * 2 - variance)));
+        adjusted.l = Math.max(10, Math.min(90, adjusted.l + (rng() * variance * 0.5 - variance * 0.25)));
+
+        return adjusted;
+    });
+}
+
+function applySurfaceAdjustments(
+    hslColors: HSL[],
+    saturation: number,
+    luminosity: number
+): HSL[] {
+    return hslColors.map(hsl => {
+        const adjusted = { ...hsl };
+
+        adjusted.s = Math.round(adjusted.s * (saturation / 0.7));
+        adjusted.s = Math.max(0, Math.min(100, adjusted.s));
+
+        adjusted.l = Math.round(adjusted.l * (luminosity / 0.5));
+        adjusted.l = Math.max(10, Math.min(90, adjusted.l));
+
+        return adjusted;
+    });
+}
+
 export function generatePalette(
     baseHex: string,
     harmony: HarmonyType,
@@ -247,37 +294,25 @@ export function generatePalette(
         variation?: number;
     }
 ): Palette {
+    const saturation = options?.saturation ?? 0.7;
+    const luminosity = options?.luminosity ?? 0.5;
+    const variation = options?.variation ?? 0.15;
     const baseHsl = hexToHsl(baseHex);
     const generator = HARMONY_GENERATORS[harmony];
     const labels = HARMONY_LABELS[harmony];
     const hslColors = generator(baseHsl);
 
-    // Apply optional adjustments
-    const baseSeed = hexToSeed(baseHex);
-    const adjustedColors = hslColors.map((hsl, colorIndex) => {
-        let adjusted = { ...hsl };
-        
-        if (options?.saturation !== undefined) {
-            adjusted.s = Math.round(adjusted.s * options.saturation);
-        }
-        
-        if (options?.luminosity !== undefined) {
-            adjusted.l = Math.round(adjusted.l * options.luminosity / 0.5);
-            adjusted.l = Math.max(10, Math.min(90, adjusted.l));
-        }
-        
-        if (options?.variation !== undefined && options.variation > 0) {
-            const rng = seededRng(baseSeed + colorIndex * 997);
-            const variance = options.variation * 100;
-            adjusted.h = rotateHue(adjusted.h, rng() * variance * 2 - variance);
-            adjusted.s = Math.max(0, Math.min(100, adjusted.s + (rng() * variance * 2 - variance)));
-            adjusted.l = Math.max(10, Math.min(90, adjusted.l + (rng() * variance * 0.5 - variance * 0.25)));
-        }
-        
-        return adjusted;
-    });
+    const adjustedColors = applySurfaceAdjustments(
+        applyVariationToHslColors(hslColors, baseHex, variation),
+        saturation,
+        luminosity
+    );
 
     const colors = adjustedColors.map((hsl, i) =>
+        colorFromHsl(hsl, labels[i] ?? `Color ${i + 1}`)
+    );
+
+    const originalColors = hslColors.map((hsl, i) =>
         colorFromHsl(hsl, labels[i] ?? `Color ${i + 1}`)
     );
 
@@ -287,7 +322,58 @@ export function generatePalette(
         baseColor: createColorInfo(baseHex, 'Base'),
         harmony,
         colors,
+        originalColors,
+        options: {
+            saturation,
+            luminosity,
+            variation
+        },
         createdAt: Date.now(),
+    };
+}
+
+export function applyPaletteAdjustments(
+    palette: Palette,
+    options: {
+        saturation?: number;
+        luminosity?: number;
+        variation?: number;
+    }
+): Palette {
+    const saturation = options.saturation ?? palette.options?.saturation ?? 0.7;
+    const luminosity = options.luminosity ?? palette.options?.luminosity ?? 0.5;
+    const variation = options.variation ?? palette.options?.variation ?? 0.15;
+
+    const baseSeed = hexToSeed(palette.baseColor.hex);
+    const sourceColors = palette.originalColors || palette.colors;
+
+    const adjustedColors = sourceColors.map((color, colorIndex) => {
+        let adjusted = { ...color.hsl };
+        
+        // Aplicar saturación (0-1)
+        adjusted.s = Math.round(adjusted.s * (saturation / 0.7)); // Normalizar basado en default 0.7
+        adjusted.s = Math.max(0, Math.min(100, adjusted.s));
+
+        // Aplicar luminosidad (0.2-0.8)
+        adjusted.l = Math.round(adjusted.l * (luminosity / 0.5));
+        adjusted.l = Math.max(10, Math.min(90, adjusted.l));
+        
+        // Aplicar variación
+        if (variation > 0) {
+            const rng = seededRng(baseSeed + colorIndex * 997);
+            const variance = variation * 100;
+            adjusted.h = rotateHue(adjusted.h, rng() * variance * 2 - variance);
+            adjusted.s = Math.max(0, Math.min(100, adjusted.s + (rng() * variance * 2 - variance)));
+            adjusted.l = Math.max(10, Math.min(90, adjusted.l + (rng() * variance * 0.5 - variance * 0.25)));
+        }
+        
+        return colorFromHsl(adjusted, color.name);
+    });
+
+    return {
+        ...palette,
+        colors: adjustedColors,
+        options: { saturation, luminosity, variation }
     };
 }
 
@@ -345,11 +431,9 @@ export function ensureContrastRatio(
     const hsl = hexToHsl(foregroundHex);
     const bgLuminance = getLuminance(backgroundHex);
     
-    // Ajustar luminosidad para alcanzar el contraste objetivo
     let bestColor = foregroundHex;
     let bestRatio = currentRatio;
     
-    // Intentar hacer más claro u oscuro
     const direction = preferBrighter ? 1 : -1;
     const startL = bgLuminance > 0.5 ? 10 : 90;
     

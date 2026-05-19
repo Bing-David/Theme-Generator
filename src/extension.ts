@@ -17,27 +17,23 @@ export function activate(context: vscode.ExtensionContext) {
   const paletteManager = new CustomPaletteManager(context.globalState);
   const sidebarProvider = new ThemeGeneratorProvider(context, paletteManager);
 
-  // Register the sidebar view
   vscode.window.createTreeView("themeGeneratorView", {
     treeDataProvider: sidebarProvider,
     showCollapseAll: true,
   });
 
-  // Open the palette panel
   context.subscriptions.push(
     vscode.commands.registerCommand("vsc-theme-generator.openPalette", () => {
       const panel = PalettePanel.createOrShow(
         context.extensionUri,
         paletteManager,
       );
-      // Sincronizar: cuando el webview genera una paleta, actualizar el sidebar
       panel.onPaletteChanged((palette) => {
         sidebarProvider.setCurrentPalette(palette);
       });
     }),
   );
 
-  // Generate a random palette
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "vsc-theme-generator.generateRandom",
@@ -54,11 +50,9 @@ export function activate(context: vscode.ExtensionContext) {
         const palette = generatePalette(randomHex(), harmony);
         sidebarProvider.setCurrentPalette(palette);
 
-        // Si el webview está abierto, enviar la paleta allí
         if (PalettePanel.currentPanel) {
           PalettePanel.currentPanel.updatePalette(palette);
         } else {
-          // Si no está abierto, abrirlo y enviar la paleta
           const panel = PalettePanel.createOrShow(
             context.extensionUri,
             paletteManager,
@@ -66,7 +60,6 @@ export function activate(context: vscode.ExtensionContext) {
           panel.onPaletteChanged((p) => {
             sidebarProvider.setCurrentPalette(p);
           });
-          // Enviar paleta después de un pequeño delay para que el webview esté listo
           setTimeout(() => {
             panel.updatePalette(palette);
           }, 500);
@@ -88,7 +81,6 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  // Clear any applied theme preview
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "vsc-theme-generator.clearPreview",
@@ -98,7 +90,6 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  // Preview current palette as theme
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "vsc-theme-generator.previewCurrent",
@@ -119,7 +110,6 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  // Export current palette as theme
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "vsc-theme-generator.exportCurrent",
@@ -141,7 +131,6 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  // Import theme from file
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "vsc-theme-generator.importTheme",
@@ -150,11 +139,9 @@ export function activate(context: vscode.ExtensionContext) {
         if (palette) {
           sidebarProvider.setCurrentPalette(palette);
 
-          // If webview is open, send palette there
           if (PalettePanel.currentPanel) {
             PalettePanel.currentPanel.updatePalette(palette);
           } else {
-            // If not open, open it and send the palette
             const panel = PalettePanel.createOrShow(
               context.extensionUri,
               paletteManager,
@@ -162,7 +149,6 @@ export function activate(context: vscode.ExtensionContext) {
             panel.onPaletteChanged((p) => {
               sidebarProvider.setCurrentPalette(p);
             });
-            // Send palette after a small delay for webview to be ready
             setTimeout(() => {
               panel.updatePalette(palette);
             }, 500);
@@ -200,7 +186,6 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  // Copy color to clipboard
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "vsc-theme-generator.copyColor",
@@ -211,7 +196,6 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  // Load saved palette
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "vsc-theme-generator.loadPalette",
@@ -226,7 +210,6 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  // Delete saved palette
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "vsc-theme-generator.deletePalette",
@@ -249,14 +232,12 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  // Refresh sidebar view
   context.subscriptions.push(
     vscode.commands.registerCommand("vsc-theme-generator.refreshView", () => {
       sidebarProvider.refresh();
     }),
   );
 
-  // Generate initial random palette
   const initialHarmony = "complementary";
   const initialPalette = generatePalette(randomHex(), initialHarmony);
   sidebarProvider.setCurrentPalette(initialPalette);

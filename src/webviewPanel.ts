@@ -4,7 +4,7 @@
  */
 
 import * as vscode from 'vscode';
-import { Palette, HarmonyType, generatePalette, randomHex } from './colorGenerator';
+import { Palette, HarmonyType, generatePalette, applyPaletteAdjustments, randomHex } from './colorGenerator';
 import { CustomPaletteManager } from './customPalette';
 import { mapPaletteToTheme, exportThemeToFile, applyThemePreview, clearThemePreview, importThemeFromFile } from './themeExporter';
 import { getStyles } from './webviewStyle';
@@ -105,7 +105,6 @@ export class PalettePanel {
                         palette: this.currentPalette,
                         themeColors: editTheme.colors
                     });
-                    // Aplicar preview si está habilitado
                     if (msg.autoPreview) {
                         await applyThemePreview(editTheme);
                     }
@@ -119,6 +118,11 @@ export class PalettePanel {
                     this.currentPalette.overrides[msg.key] = msg.color;
                     const theme = mapPaletteToTheme(this.currentPalette);
                     await applyThemePreview(theme);
+                    this.panel.webview.postMessage({ 
+                        command: 'themeElementUpdated', 
+                        key: msg.key, 
+                        color: msg.color 
+                    });
                 }
                 break;
             case 'savePalette':
@@ -128,33 +132,24 @@ export class PalettePanel {
                         value: msg.name || this.currentPalette.name,
                         placeHolder: 'My Awesome Theme'
                     });
-                    
                     if (name) {
-                        // If name changed, treat as new palette (Save As)
                         if (name !== this.currentPalette.name) {
                             this.currentPalette.id = Date.now().toString();
                             this.currentPalette.name = name;
-                            vscode.window.showInformationMessage(`Saved as new palette: "${name}"`);
-                        } else {
-                            vscode.window.showInformationMessage(`Palette updated: "${name}"`);
                         }
-                        
                         await this.paletteManager.add({ ...this.currentPalette });
                         this.sendSavedPalettes();
-                        
-                        // Update the name in the webview
                         const theme = mapPaletteToTheme(this.currentPalette);
                         this.panel.webview.postMessage({
                             command: 'updatePalette',
                             palette: this.currentPalette,
-                            themeColors: theme.colors
+                            themeColors: theme.colors,
+                            syntaxTokens: theme.tokenColors
                         });
                     }
                 }
                 break;
             case 'deletePalette':
-                console.log(`[WebviewPanel] Received delete request for ID: ${msg.id}`);
-                // If deleting the currently active palette, clear the preview
                 if (this.currentPalette && this.currentPalette.id === msg.id) {
                     await clearThemePreview();
                     this.currentPalette = undefined;
@@ -171,7 +166,8 @@ export class PalettePanel {
                     this.panel.webview.postMessage({
                         command: 'updatePalette',
                         palette,
-                        themeColors: loadTheme.colors
+                        themeColors: loadTheme.colors,
+                        syntaxTokens: loadTheme.tokenColors
                     });
                 }
                 break;
@@ -194,56 +190,42 @@ export class PalettePanel {
                     this.currentPalette = palette;
                     await this.paletteManager.add(palette);
                     this.sendSavedPalettes();
-                    
                     const importTheme = mapPaletteToTheme(palette);
                     this.panel.webview.postMessage({
                         command: 'updatePalette',
                         palette,
-                        themeColors: importTheme.colors
+                        themeColors: importTheme.colors,
+                        syntaxTokens: importTheme.tokenColors
                     });
                     this.notifyPaletteChanged();
                 }
                 break;
             }
+            case 'adjust':
+                if (this.currentPalette) {
+                    const palette = this.currentPalette;
+                    this.currentPalette = applyPaletteAdjustments(palette, {
+                        saturation: msg.saturation,
+                        luminosity: msg.luminosity,
+                        variation: msg.variation
+                    });
+                    const theme = mapPaletteToTheme(this.currentPalette, undefined, msg.syntaxSaturation);
+                    this.panel.webview.postMessage({
+                        command: 'updatePalette',
+                        palette: this.currentPalette,
+                        themeColors: theme.colors,
+                        syntaxTokens: theme.tokenColors
+                    });
+                    if (msg.autoPreview) {
+                        await applyThemePreview(theme);
+                    }
+                }
+                break;
             case 'clearPreview':
                 await clearThemePreview();
                 break;
-            case 'resetTheme':
-                await clearThemePreview();
-                await vscode.commands.executeCommand('workbench.action.reloadWindow');
-                break;
-            case 'saveCustomPalette': {
-                const custom = this.paletteManager.createCustomPalette(msg.name, msg.colors);
-                await this.paletteManager.add(custom);
-                this.currentPalette = custom;
-                const customTheme = mapPaletteToTheme(custom);
-                this.panel.webview.postMessage({
-                    command: 'updatePalette',
-                    palette: custom,
-                    themeColors: customTheme.colors
-                });
-                this.sendSavedPalettes();
-                break;
-            }
             case 'getSavedPalettes':
                 this.sendSavedPalettes();
-                break;
-            case 'updateThemeElement':
-                if (this.currentPalette && msg.key && msg.color) {
-                    // Aplicar el cambio al tema en tiempo real
-                    const theme = mapPaletteToTheme(this.currentPalette);
-                    // Actualizar el elemento específico
-                    if (theme.colors) {
-                        theme.colors[msg.key] = msg.color;
-                    }
-                    await applyThemePreview(theme);
-                    // Confirmar actualización al webview
-                    this.panel.webview.postMessage({ 
-                        command: 'themeElementUpdated', 
-                        key: msg.key, 
-                        color: msg.color 
-                    });
-                }
                 break;
         }
     }
@@ -269,6 +251,7 @@ export class PalettePanel {
             command: 'updatePalette',
             palette: this.currentPalette,
             themeColors: theme.colors,
+            syntaxTokens: theme.tokenColors,
             contrastLevel,
             syntaxSaturation,
             isRandom,

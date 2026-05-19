@@ -1,825 +1,579 @@
 export function getScript(): string {
   return `(function () {
     const vscode = acquireVsCodeApi();
+    
     let currentHarmony = 'complementary';
     let currentPalette = null;
-    let contrastLevel = 0.7;
     let saturationLevel = 0.7;
     let luminosityLevel = 0.5;
     let variationLevel = 0.15;
     let syntaxSaturation = 1.0;
-    let colorMode = 'vibrant';
-    let editingIndex = -1;
-    let isPreviewActive = false;
     let autoPreview = true;
+    let isPreviewActive = false;
+    
     let debounceTimer = null;
     let regenerateTimer = null;
-
-    // Elements
-    const baseColor = document.getElementById('baseColor');
-    const baseColorText = document.getElementById('baseColorText');
-    const editableStrip = document.getElementById('editableStrip');
-    const savedList = document.getElementById('savedList');
-    const toast = document.getElementById('toast');
-    const saturationSlider = document.getElementById('saturationSlider');
-    const luminositySlider = document.getElementById('luminositySlider');
-    const variationSlider = document.getElementById('variationSlider');
-    const syntaxSaturationSlider = document.getElementById('syntaxSaturationSlider');
-    const saturationValue = document.getElementById('saturationValue');
-    const luminosityValue = document.getElementById('luminosityValue');
-    const variationValue = document.getElementById('variationValue');
-    const syntaxSaturationValue = document.getElementById('syntaxSaturationValue');
-    const resetWarning = document.getElementById('resetWarning');
-    const autoPreviewCheckbox = document.getElementById('autoPreview');
-
-    // Theme elements for detailed editing
-    const themeElements = {
-        editor: [
-            { key: 'editor.background', name: 'Editor Background', desc: 'Main editor area' },
-            { key: 'editor.foreground', name: 'Editor Text', desc: 'Default text color' },
-            { key: 'editor.lineHighlightBackground', name: 'Current Line', desc: 'Active line highlight' },
-            { key: 'editor.selectionBackground', name: 'Selection', desc: 'Selected text background' },
-            { key: 'editor.wordHighlightBackground', name: 'Word Highlight', desc: 'Word search highlight' },
-            { key: 'editor.rangeHighlightBackground', name: 'Range Highlight', desc: 'Range highlight background' },
-            { key: 'editorCursor.foreground', name: 'Cursor', desc: 'Text cursor color' },
-            { key: 'editorLineNumber.foreground', name: 'Line Numbers', desc: 'Inactive line numbers' },
-            { key: 'editorLineNumber.activeForeground', name: 'Active Line Number', desc: 'Current line number' },
-            { key: 'editorIndentGuide.background', name: 'Indent Guides', desc: 'Indentation lines' },
-            { key: 'editorIndentGuide.activeBackground', name: 'Active Indent', desc: 'Current indent line' },
-            { key: 'editorRuler.foreground', name: 'Rulers', desc: 'Vertical ruler lines' },
-            { key: 'editorWhitespace.foreground', name: 'Whitespace', desc: 'Space/tab dots' },
-            { key: 'editorBracketMatch.background', name: 'Bracket Match BG', desc: 'Matching bracket background' },
-            { key: 'editorBracketMatch.border', name: 'Bracket Match Border', desc: 'Matching bracket border' },
-            { key: 'editorCodeLens.foreground', name: 'Code Lens', desc: 'Code lens text' },
-            { key: 'editorLink.activeForeground', name: 'Link Color', desc: 'Active link color' },
-        ],
-        errors: [
-            { key: 'editorError.foreground', name: 'Error Squiggle', desc: 'Error underline color' },
-            { key: 'editorError.border', name: 'Error Border', desc: 'Error border color' },
-            { key: 'editorWarning.foreground', name: 'Warning Squiggle', desc: 'Warning underline color' },
-            { key: 'editorWarning.border', name: 'Warning Border', desc: 'Warning border color' },
-            { key: 'editorInfo.foreground', name: 'Info Squiggle', desc: 'Info underline color' },
-            { key: 'editorInfo.border', name: 'Info Border', desc: 'Info border color' },
-            { key: 'editorHint.foreground', name: 'Hint/Suggestion', desc: 'Hint underline color' },
-            { key: 'inputValidation.errorBackground', name: 'Input Error BG', desc: 'Input error background' },
-            { key: 'inputValidation.errorBorder', name: 'Input Error Border', desc: 'Input error border' },
-            { key: 'inputValidation.warningBackground', name: 'Input Warning BG', desc: 'Input warning background' },
-            { key: 'inputValidation.warningBorder', name: 'Input Warning Border', desc: 'Input warning border' },
-            { key: 'inputValidation.infoBackground', name: 'Input Info BG', desc: 'Input info background' },
-            { key: 'inputValidation.infoBorder', name: 'Input Info Border', desc: 'Input info border' },
-        ],
-        overviewRuler: [
-            { key: 'editorOverviewRuler.border', name: 'Overview Ruler Border', desc: 'Ruler border' },
-            { key: 'editorOverviewRuler.findMatchForeground', name: 'Find Match', desc: 'Find matches in ruler' },
-            { key: 'editorOverviewRuler.rangeHighlightForeground', name: 'Range Highlight', desc: 'Range highlights' },
-            { key: 'editorOverviewRuler.selectionHighlightForeground', name: 'Selection Highlight', desc: 'Selection in ruler' },
-            { key: 'editorOverviewRuler.wordHighlightForeground', name: 'Word Highlight', desc: 'Word highlights' },
-            { key: 'editorOverviewRuler.wordHighlightStrongForeground', name: 'Word Highlight Strong', desc: 'Strong word highlights' },
-            { key: 'editorOverviewRuler.modifiedForeground', name: 'Modified', desc: 'Modified lines' },
-            { key: 'editorOverviewRuler.addedForeground', name: 'Added', desc: 'Added lines' },
-            { key: 'editorOverviewRuler.deletedForeground', name: 'Deleted', desc: 'Deleted lines' },
-            { key: 'editorOverviewRuler.errorForeground', name: 'Errors', desc: 'Error lines' },
-            { key: 'editorOverviewRuler.warningForeground', name: 'Warnings', desc: 'Warning lines' },
-            { key: 'editorOverviewRuler.infoForeground', name: 'Info', desc: 'Info lines' },
-            { key: 'editorOverviewRuler.bracketMatchForeground', name: 'Bracket Match', desc: 'Bracket matches' },
-        ],
-        gutter: [
-            { key: 'editorGutter.background', name: 'Gutter Background', desc: 'Gutter area background' },
-            { key: 'editorGutter.modifiedBackground', name: 'Modified', desc: 'Modified indicator' },
-            { key: 'editorGutter.addedBackground', name: 'Added', desc: 'Added indicator' },
-            { key: 'editorGutter.deletedBackground', name: 'Deleted', desc: 'Deleted indicator' },
-        ],
-        sidebar: [
-            { key: 'sideBar.background', name: 'Sidebar BG', desc: 'File explorer background' },
-            { key: 'sideBar.foreground', name: 'Sidebar Text', desc: 'File/folder names' },
-            { key: 'sideBar.border', name: 'Sidebar Border', desc: 'Sidebar separator line' },
-            { key: 'sideBarTitle.foreground', name: 'Sidebar Title', desc: 'Section titles' },
-            { key: 'sideBarSectionHeader.background', name: 'Section Headers BG', desc: 'Collapsible headers' },
-            { key: 'sideBarSectionHeader.foreground', name: 'Section Headers Text', desc: 'Header text' },
-            { key: 'sideBarSectionHeader.border', name: 'Section Headers Border', desc: 'Header border' },
-            { key: 'tree.indentGuidesStroke', name: 'Tree Indent Guides', desc: 'Tree indent lines' },
-        ],
-        activityBar: [
-            { key: 'activityBar.background', name: 'Activity Bar BG', desc: 'Left sidebar background' },
-            { key: 'activityBar.foreground', name: 'Activity Bar Icons', desc: 'Icon colors' },
-            { key: 'activityBar.activeBorder', name: 'Activity Active', desc: 'Active icon indicator' },
-            { key: 'activityBarBadge.background', name: 'Badge BG', desc: 'Badge background' },
-            { key: 'activityBarBadge.foreground', name: 'Badge Text', desc: 'Badge text' },
-        ],
-        titleBar: [
-            { key: 'titleBar.activeBackground', name: 'Title Bar BG', desc: 'Window title background' },
-            { key: 'titleBar.activeForeground', name: 'Title Bar Text', desc: 'Window title text' },
-            { key: 'titleBar.inactiveBackground', name: 'Title Bar Inactive BG', desc: 'Inactive window title' },
-            { key: 'titleBar.inactiveForeground', name: 'Title Bar Inactive Text', desc: 'Inactive title text' },
-            { key: 'titleBar.border', name: 'Title Bar Border', desc: 'Title bar bottom line' },
-        ],
-        statusBar: [
-            { key: 'statusBar.background', name: 'Status Bar BG', desc: 'Bottom bar background' },
-            { key: 'statusBar.foreground', name: 'Status Bar Text', desc: 'Status bar text' },
-            { key: 'statusBar.debuggingBackground', name: 'Debugging BG', desc: 'Debugging mode background' },
-            { key: 'statusBar.debuggingForeground', name: 'Debugging Text', desc: 'Debugging mode text' },
-            { key: 'statusBar.noFolderBackground', name: 'No Folder BG', desc: 'No workspace background' },
-            { key: 'statusBar.noFolderForeground', name: 'No Folder Text', desc: 'No workspace text' },
-        ],
-        tabs: [
-            { key: 'tab.activeBackground', name: 'Active Tab BG', desc: 'Current tab background' },
-            { key: 'tab.activeForeground', name: 'Active Tab Text', desc: 'Current tab text' },
-            { key: 'tab.inactiveBackground', name: 'Inactive Tab BG', desc: 'Inactive tab background' },
-            { key: 'tab.inactiveForeground', name: 'Inactive Tab Text', desc: 'Inactive tab text' },
-            { key: 'tab.activeBorder', name: 'Tab Active Border', desc: 'Active tab indicator' },
-            { key: 'tab.border', name: 'Tab Border', desc: 'Tab separator' },
-        ],
-        panel: [
-            { key: 'panel.background', name: 'Panel BG', desc: 'Terminal/output background' },
-            { key: 'panel.border', name: 'Panel Border', desc: 'Panel separator line' },
-            { key: 'panelTitle.activeForeground', name: 'Panel Title Active', desc: 'Active panel tab text' },
-            { key: 'panelTitle.inactiveForeground', name: 'Panel Title Inactive', desc: 'Inactive panel tab text' },
-            { key: 'panelTitle.activeBorder', name: 'Panel Title Border', desc: 'Active panel indicator' },
-        ],
-        terminal: [
-            { key: 'terminal.background', name: 'Terminal BG', desc: 'Terminal background' },
-            { key: 'terminal.foreground', name: 'Terminal Text', desc: 'Terminal text' },
-            { key: 'terminalCursor.foreground', name: 'Terminal Cursor', desc: 'Terminal cursor color' },
-            { key: 'terminal.selectionBackground', name: 'Terminal Selection', desc: 'Terminal selection' },
-            { key: 'terminal.ansiBlack', name: 'ANSI Black', desc: 'Black color' },
-            { key: 'terminal.ansiRed', name: 'ANSI Red', desc: 'Red color' },
-            { key: 'terminal.ansiGreen', name: 'ANSI Green', desc: 'Green color' },
-            { key: 'terminal.ansiYellow', name: 'ANSI Yellow', desc: 'Yellow color' },
-            { key: 'terminal.ansiBlue', name: 'ANSI Blue', desc: 'Blue color' },
-            { key: 'terminal.ansiMagenta', name: 'ANSI Magenta', desc: 'Magenta color' },
-            { key: 'terminal.ansiCyan', name: 'ANSI Cyan', desc: 'Cyan color' },
-            { key: 'terminal.ansiWhite', name: 'ANSI White', desc: 'White color' },
-            { key: 'terminal.ansiBrightBlack', name: 'ANSI Bright Black', desc: 'Bright black' },
-            { key: 'terminal.ansiBrightRed', name: 'ANSI Bright Red', desc: 'Bright red' },
-            { key: 'terminal.ansiBrightGreen', name: 'ANSI Bright Green', desc: 'Bright green' },
-            { key: 'terminal.ansiBrightYellow', name: 'ANSI Bright Yellow', desc: 'Bright yellow' },
-            { key: 'terminal.ansiBrightBlue', name: 'ANSI Bright Blue', desc: 'Bright blue' },
-            { key: 'terminal.ansiBrightMagenta', name: 'ANSI Bright Magenta', desc: 'Bright magenta' },
-            { key: 'terminal.ansiBrightCyan', name: 'ANSI Bright Cyan', desc: 'Bright cyan' },
-            { key: 'terminal.ansiBrightWhite', name: 'ANSI Bright White', desc: 'Bright white' },
-        ],
-        forms: [
-            { key: 'input.background', name: 'Input BG', desc: 'Text input background' },
-            { key: 'input.foreground', name: 'Input Text', desc: 'Text input color' },
-            { key: 'input.border', name: 'Input Border', desc: 'Input field border' },
-            { key: 'focusBorder', name: 'Focus Border', desc: 'Focused element outline' },
-            { key: 'dropdown.background', name: 'Dropdown BG', desc: 'Select background' },
-            { key: 'dropdown.foreground', name: 'Dropdown Text', desc: 'Select text' },
-            { key: 'dropdown.border', name: 'Dropdown Border', desc: 'Dropdown border' },
-            { key: 'dropdown.listBackground', name: 'Dropdown List BG', desc: 'List background' },
-            { key: 'checkbox.background', name: 'Checkbox BG', desc: 'Checkbox background' },
-            { key: 'checkbox.foreground', name: 'Checkbox Mark', desc: 'Checkbox checkmark' },
-            { key: 'checkbox.border', name: 'Checkbox Border', desc: 'Checkbox border' },
-            { key: 'button.background', name: 'Button BG', desc: 'Primary button' },
-            { key: 'button.foreground', name: 'Button Text', desc: 'Button text color' },
-            { key: 'button.hoverBackground', name: 'Button Hover', desc: 'Button hover background' },
-        ],
-        lists: [
-            { key: 'list.activeSelectionBackground', name: 'Selection BG', desc: 'Selected item background' },
-            { key: 'list.activeSelectionForeground', name: 'Selection Text', desc: 'Selected item text' },
-            { key: 'list.inactiveSelectionBackground', name: 'Inactive Selection', desc: 'Unfocused selection' },
-            { key: 'list.inactiveSelectionForeground', name: 'Inactive Selection Text', desc: 'Unfocused selection text' },
-            { key: 'list.hoverBackground', name: 'Hover BG', desc: 'Hovered item background' },
-            { key: 'list.hoverForeground', name: 'Hover Text', desc: 'Hovered item text' },
-            { key: 'list.focusBackground', name: 'Focus BG', desc: 'Focused item background' },
-            { key: 'list.focusForeground', name: 'Focus Text', desc: 'Focused item text' },
-        ],
-        widgets: [
-            { key: 'editorWidget.background', name: 'Editor Widget BG', desc: 'Widget background' },
-            { key: 'editorWidget.foreground', name: 'Editor Widget Text', desc: 'Widget text' },
-            { key: 'editorWidget.border', name: 'Editor Widget Border', desc: 'Widget border' },
-            { key: 'editorSuggestWidget.background', name: 'Suggest Widget BG', desc: 'Autocomplete background' },
-            { key: 'editorSuggestWidget.foreground', name: 'Suggest Widget Text', desc: 'Autocomplete text' },
-            { key: 'editorSuggestWidget.selectedBackground', name: 'Suggest Selected BG', desc: 'Selected item background' },
-            { key: 'editorSuggestWidget.highlightForeground', name: 'Suggest Highlight', desc: 'Highlight color' },
-            { key: 'editorHoverWidget.background', name: 'Hover Widget BG', desc: 'Hover tooltip background' },
-            { key: 'editorHoverWidget.foreground', name: 'Hover Widget Text', desc: 'Hover tooltip text' },
-            { key: 'editorHoverWidget.border', name: 'Hover Widget Border', desc: 'Hover tooltip border' },
-        ],
-        quickInput: [
-            { key: 'quickInput.background', name: 'Quick Input BG', desc: 'Command palette background' },
-            { key: 'quickInput.foreground', name: 'Quick Input Text', desc: 'Command palette text' },
-            { key: 'quickInputList.focusBackground', name: 'Quick Input Focus BG', desc: 'Focused item background' },
-            { key: 'quickInputList.focusForeground', name: 'Quick Input Focus Text', desc: 'Focused item text' },
-        ],
-        peekView: [
-            { key: 'peekView.border', name: 'Peek Border', desc: 'Peek view border' },
-            { key: 'peekViewEditor.background', name: 'Peek Editor BG', desc: 'Peek editor background' },
-            { key: 'peekViewResult.background', name: 'Peek Result BG', desc: 'Results background' },
-            { key: 'peekViewResult.selectionBackground', name: 'Peek Selection BG', desc: 'Selected result background' },
-            { key: 'peekViewTitle.background', name: 'Peek Title BG', desc: 'Title background' },
-            { key: 'peekViewTitleLabel.foreground', name: 'Peek Title Text', desc: 'Title text' },
-        ],
-        notifications: [
-            { key: 'notificationCenter.border', name: 'Notification Center Border', desc: 'Notification center border' },
-            { key: 'notificationCenterHeader.background', name: 'Notification Header BG', desc: 'Header background' },
-            { key: 'notificationCenterHeader.foreground', name: 'Notification Header Text', desc: 'Header text' },
-            { key: 'notifications.background', name: 'Notification BG', desc: 'Notification background' },
-            { key: 'notifications.foreground', name: 'Notification Text', desc: 'Notification text' },
-            { key: 'notifications.border', name: 'Notification Border', desc: 'Notification border' },
-            { key: 'notificationLink.foreground', name: 'Notification Link', desc: 'Link color' },
-        ],
-        menu: [
-            { key: 'menu.background', name: 'Menu BG', desc: 'Context menu background' },
-            { key: 'menu.foreground', name: 'Menu Text', desc: 'Menu text' },
-            { key: 'menu.selectionBackground', name: 'Menu Selection BG', desc: 'Selected item background' },
-            { key: 'menu.selectionForeground', name: 'Menu Selection Text', desc: 'Selected item text' },
-            { key: 'menu.separatorBackground', name: 'Menu Separator', desc: 'Separator line' },
-        ],
-        scrollbar: [
-            { key: 'scrollbar.shadow', name: 'Scrollbar Shadow', desc: 'Shadow color' },
-            { key: 'scrollbarSlider.background', name: 'Scrollbar Slider', desc: 'Slider background' },
-            { key: 'scrollbarSlider.hoverBackground', name: 'Scrollbar Hover', desc: 'Hover background' },
-            { key: 'scrollbarSlider.activeBackground', name: 'Scrollbar Active', desc: 'Active slider' },
-        ],
-        breadcrumb: [
-            { key: 'breadcrumb.foreground', name: 'Breadcrumb Text', desc: 'Breadcrumb text' },
-            { key: 'breadcrumb.focusForeground', name: 'Breadcrumb Focus', desc: 'Focused breadcrumb' },
-            { key: 'breadcrumb.activeSelectionForeground', name: 'Breadcrumb Active', desc: 'Active breadcrumb' },
-            { key: 'breadcrumbPicker.background', name: 'Breadcrumb Picker BG', desc: 'Picker background' },
-        ],
-        diff: [
-            { key: 'diffEditor.insertedTextBackground', name: 'Added Line BG', desc: 'Added line background' },
-            { key: 'diffEditor.removedTextBackground', name: 'Removed Line BG', desc: 'Removed line background' },
-            { key: 'diffEditor.border', name: 'Diff Border', desc: 'Diff editor border' },
-            { key: 'merge.currentHeaderBackground', name: 'Current Merge BG', desc: 'Current version background' },
-            { key: 'merge.currentContentBackground', name: 'Current Merge Content', desc: 'Current version content' },
-            { key: 'merge.incomingHeaderBackground', name: 'Incoming Merge BG', desc: 'Incoming version background' },
-            { key: 'merge.incomingContentBackground', name: 'Incoming Merge Content', desc: 'Incoming version content' },
-        ],
-        git: [
-            { key: 'gitDecoration.addedResourceForeground', name: 'Added', desc: 'Added file color' },
-            { key: 'gitDecoration.modifiedResourceForeground', name: 'Modified', desc: 'Modified file color' },
-            { key: 'gitDecoration.deletedResourceForeground', name: 'Deleted', desc: 'Deleted file color' },
-            { key: 'gitDecoration.untrackedResourceForeground', name: 'Untracked', desc: 'Untracked file color' },
-            { key: 'gitDecoration.ignoredResourceForeground', name: 'Ignored', desc: 'Ignored file color' },
-            { key: 'gitDecoration.conflictingResourceForeground', name: 'Conflicting', desc: 'Conflicting file color' },
-        ],
-        badge: [
-            { key: 'badge.background', name: 'Badge BG', desc: 'Badge background' },
-            { key: 'badge.foreground', name: 'Badge Text', desc: 'Badge text' },
-            { key: 'extensionBadge.remoteBackground', name: 'Remote Badge BG', desc: 'Remote indicator' },
-            { key: 'extensionBadge.remoteForeground', name: 'Remote Badge Text', desc: 'Remote text' },
-        ],
-        debug: [
-            { key: 'debugToolBar.background', name: 'Debug Toolbar BG', desc: 'Toolbar background' },
-            { key: 'debugToolBar.border', name: 'Debug Toolbar Border', desc: 'Toolbar border' },
-        ],
-        progressBar: [
-            { key: 'progressBar.background', name: 'Progress Bar', desc: 'Progress bar color' },
-        ],
-        symbols: [
-            { key: 'symbolIcon.arrayForeground', name: 'Symbol Array', desc: 'Array icon' },
-            { key: 'symbolIcon.classForeground', name: 'Symbol Class', desc: 'Class icon' },
-            { key: 'symbolIcon.constructorForeground', name: 'Symbol Constructor', desc: 'Constructor icon' },
-            { key: 'symbolIcon.enumeratorForeground', name: 'Symbol Enum', desc: 'Enum icon' },
-            { key: 'symbolIcon.functionForeground', name: 'Symbol Function', desc: 'Function icon' },
-            { key: 'symbolIcon.interfaceForeground', name: 'Symbol Interface', desc: 'Interface icon' },
-            { key: 'symbolIcon.methodForeground', name: 'Symbol Method', desc: 'Method icon' },
-            { key: 'symbolIcon.moduleForeground', name: 'Symbol Module', desc: 'Module icon' },
-            { key: 'symbolIcon.namespaceForeground', name: 'Symbol Namespace', desc: 'Namespace icon' },
-            { key: 'symbolIcon.packageForeground', name: 'Symbol Package', desc: 'Package icon' },
-            { key: 'symbolIcon.propertyForeground', name: 'Symbol Property', desc: 'Property icon' },
-            { key: 'symbolIcon.structForeground', name: 'Symbol Struct', desc: 'Struct icon' },
-            { key: 'symbolIcon.variableForeground', name: 'Symbol Variable', desc: 'Variable icon' },
-            { key: 'symbolIcon.keywordForeground', name: 'Symbol Keyword', desc: 'Keyword icon' },
-            { key: 'symbolIcon.operatorForeground', name: 'Symbol Operator', desc: 'Operator icon' },
-            { key: 'symbolIcon.stringForeground', name: 'Symbol String', desc: 'String icon' },
-            { key: 'symbolIcon.numberForeground', name: 'Symbol Number', desc: 'Number icon' },
-            { key: 'symbolIcon.booleanForeground', name: 'Symbol Boolean', desc: 'Boolean icon' },
-            { key: 'symbolIcon.constantForeground', name: 'Symbol Constant', desc: 'Constant icon' },
-        ],
+    
+    const elements = {
+        baseColor: document.getElementById('baseColor'),
+        baseColorText: document.getElementById('baseColorText'),
+        editableStrip: document.getElementById('editableStrip'),
+        savedList: document.getElementById('savedList'),
+        toast: document.getElementById('toast'),
+        saturationSlider: document.getElementById('saturationSlider'),
+        luminositySlider: document.getElementById('luminositySlider'),
+        variationSlider: document.getElementById('variationSlider'),
+        syntaxSaturationSlider: document.getElementById('syntaxSaturationSlider'),
+        saturationValue: document.getElementById('saturationValue'),
+        luminosityValue: document.getElementById('luminosityValue'),
+        variationValue: document.getElementById('variationValue'),
+        syntaxSaturationValue: document.getElementById('syntaxSaturationValue'),
+        resetWarning: document.getElementById('resetWarning'),
+        autoPreview: document.getElementById('autoPreview'),
+        themeSearch: document.getElementById('themeSearch'),
+        paletteInfoSwatch: document.getElementById('paletteInfoSwatch'),
+        paletteInfoHex: document.getElementById('paletteInfoHex'),
+        paletteInfoHarmony: document.getElementById('paletteInfoHarmony'),
+        themeDetailsOverlay: document.getElementById('themeDetailsOverlay'),
+        globalColorInput: (function() {
+            const input = document.createElement('input');
+            input.type = 'color';
+            input.style.display = 'none';
+            document.body.appendChild(input);
+            return input;
+        })()
     };
 
-    function showToast(msg) {
-        toast.textContent = msg;
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2000);
+    const themeElements = {
+        workbench: {
+            editor: [
+                { key: 'editor.background', name: 'Background', desc: 'Main background' },
+                { key: 'editor.foreground', name: 'Foreground', desc: 'Default text' },
+                { key: 'editor.lineHighlightBackground', name: 'Line Highlight', desc: 'Current line' },
+                { key: 'editor.selectionBackground', name: 'Selection', desc: 'Selected text' },
+                { key: 'editorCursor.foreground', name: 'Cursor', desc: 'Text cursor' },
+                { key: 'editorLineNumber.foreground', name: 'Line Numbers', desc: 'Inactive' },
+                { key: 'editorLineNumber.activeForeground', name: 'Active Number', desc: 'Current' },
+            ],
+            errors: [
+                { key: 'errorForeground', name: 'Error', desc: 'General error' },
+                { key: 'editorError.foreground', name: 'Editor Error', desc: 'Squiggles' },
+                { key: 'editorWarning.foreground', name: 'Editor Warning', desc: 'Squiggles' },
+                { key: 'editorInfo.foreground', name: 'Editor Info', desc: 'Squiggles' },
+            ],
+            sidebar: [
+                { key: 'sideBar.background', name: 'Background', desc: 'Sidebar BG' },
+                { key: 'sideBar.foreground', name: 'Foreground', desc: 'Sidebar text' },
+                { key: 'sideBarSectionHeader.background', name: 'Section BG', desc: 'Header BG' },
+                { key: 'sideBarTitle.foreground', name: 'Title', desc: 'Sidebar title' },
+            ],
+            activityBar: [
+                { key: 'activityBar.background', name: 'Background', desc: 'Left bar BG' },
+                { key: 'activityBar.foreground', name: 'Foreground', desc: 'Active icon' },
+                { key: 'activityBar.inactiveForeground', name: 'Inactive Icons', desc: 'Other icons' },
+                { key: 'activityBar.activeBorder', name: 'Active Border', desc: 'Active indicator' },
+            ],
+            titleBar: [
+                { key: 'titleBar.activeBackground', name: 'Active BG', desc: 'Window title' },
+                { key: 'titleBar.activeForeground', name: 'Active FG', desc: 'Window text' },
+            ],
+            statusBar: [
+                { key: 'statusBar.background', name: 'Background', desc: 'Bottom bar' },
+                { key: 'statusBar.foreground', name: 'Foreground', desc: 'Status text' },
+                { key: 'statusBar.noFolderBackground', name: 'No Folder BG', desc: 'Empty workspace' },
+            ],
+            tabs: [
+                { key: 'tab.activeBackground', name: 'Active BG', desc: 'Current tab' },
+                { key: 'tab.activeForeground', name: 'Active FG', desc: 'Current text' },
+                { key: 'tab.inactiveBackground', name: 'Inactive BG', desc: 'Inactive tab' },
+                { key: 'editorGroupHeader.tabsBackground', name: 'Header BG', desc: 'Tabs container' },
+            ],
+            terminal: [
+                { key: 'terminal.background', name: 'Background', desc: 'Terminal BG' },
+                { key: 'terminal.foreground', name: 'Foreground', desc: 'Terminal text' },
+                { key: 'terminal.ansiBlack', name: 'ANSI Black', desc: 'Terminal black' },
+                { key: 'terminal.ansiRed', name: 'ANSI Red', desc: 'Terminal red' },
+            ],
+            panel: [
+                { key: 'panel.background', name: 'Background', desc: 'Bottom panel BG' },
+                { key: 'panelTitle.activeForeground', name: 'Active Title', desc: 'Panel title' },
+            ],
+            lists: [
+                { key: 'list.activeSelectionBackground', name: 'Active Select', desc: 'List selection' },
+                { key: 'list.hoverBackground', name: 'Hover BG', desc: 'List hover' },
+                { key: 'list.inactiveSelectionBackground', name: 'Inactive Select', desc: 'Focus loss' },
+            ],
+            widgets: [
+                { key: 'editorWidget.background', name: 'Background', desc: 'Popups & widgets' },
+                { key: 'editorSuggestWidget.background', name: 'Suggest BG', desc: 'Intellisense' },
+            ],
+            forms: [
+                { key: 'input.background', name: 'Background', desc: 'Input BG' },
+                { key: 'input.foreground', name: 'Foreground', desc: 'Input text' },
+                { key: 'button.background', name: 'Btn BG', desc: 'Button background' },
+            ],
+            quickInput: [
+                { key: 'quickInput.background', name: 'Background', desc: 'Cmd palette BG' },
+            ],
+            peekView: [
+                { key: 'peekViewEditor.background', name: 'Background', desc: 'Peek BG' },
+            ],
+            notifications: [
+                { key: 'notifications.background', name: 'Background', desc: 'Toast BG' },
+            ],
+            menu: [
+                { key: 'menu.background', name: 'Background', desc: 'Menu BG' },
+            ],
+            scrollbar: [
+                { key: 'scrollbarSlider.background', name: 'Slider BG', desc: 'Scrollbar' },
+            ],
+            breadcrumb: [
+                { key: 'breadcrumb.background', name: 'Background', desc: 'Path bar BG' },
+            ],
+            diff: [
+                { key: 'diffEditor.insertedTextBackground', name: 'Inserted', desc: 'Git diff' },
+                { key: 'diffEditor.removedTextBackground', name: 'Removed', desc: 'Git diff' },
+            ],
+            git: [
+                { key: 'gitDecoration.modifiedResourceForeground', name: 'Modified', desc: 'Git text' },
+            ],
+            gutter: [
+                { key: 'editorGutter.background', name: 'Background', desc: 'Gutter BG' },
+            ],
+            overviewRuler: [
+                { key: 'editorOverviewRuler.border', name: 'Border', desc: 'Ruler border' },
+            ],
+            badge: [
+                { key: 'badge.background', name: 'Background', desc: 'Badge BG' },
+            ],
+            debug: [
+                { key: 'debugToolBar.background', name: 'Toolbar BG', desc: 'Debug bar' },
+            ],
+            progressBar: [
+                { key: 'progressBar.background', name: 'Background', desc: 'Progress bar' },
+            ],
+            symbols: [
+                { key: 'symbolIcon.functionForeground', name: 'Function Icon', desc: 'Outliner' },
+            ]
+        },
+        syntax: {
+            core: [
+                { key: 'syntax.comment', name: 'Comments', desc: 'Code comments' },
+                { key: 'syntax.keyword', name: 'Keywords', desc: 'Control flow' },
+                { key: 'syntax.string', name: 'Strings', desc: 'Quoted text' },
+                { key: 'syntax.number', name: 'Numbers', desc: 'Numeric values' },
+            ],
+            functions: [
+                { key: 'syntax.function', name: 'Functions', desc: 'Declarations' },
+                { key: 'syntax.parameter', name: 'Parameters', desc: 'Function args' },
+            ],
+            types: [
+                { key: 'syntax.class', name: 'Classes/Types', desc: 'Types & classes' },
+                { key: 'syntax.namespace', name: 'Namespaces', desc: 'Modules' },
+            ],
+            vars: [
+                { key: 'syntax.variable', name: 'Variables', desc: 'General vars' },
+                { key: 'syntax.constant', name: 'Constants', desc: 'Constant vars' },
+                { key: 'syntax.property', name: 'Properties', desc: 'Object props' },
+            ],
+            ops: [
+                { key: 'syntax.operator', name: 'Operators', desc: 'Math & logic' },
+                { key: 'syntax.punctuation', name: 'Punctuation', desc: 'Brackets & dots' },
+            ],
+            markup: [
+                { key: 'syntax.tag', name: 'Tags', desc: 'HTML/XML tags' },
+                { key: 'syntax.attribute', name: 'Attributes', desc: 'HTML attributes' },
+            ],
+            special: [
+                { key: 'syntax.decorator', name: 'Decorators', desc: 'Annotations' },
+                { key: 'syntax.regex', name: 'Regex', desc: 'Regular expressions' },
+            ]
+        }
+    };
+
+    function init() {
+        setupTabs();
+        setupSliders();
+        setupHarmony();
+        setupColorInputs();
+        setupActionButtons();
+        renderThemeElements();
+        setupSearch();
+        vscode.postMessage({ command: 'getSavedPalettes' });
     }
 
-    saturationSlider.addEventListener('input', () => {
-        saturationLevel = parseFloat(saturationSlider.value);
-        saturationValue.textContent = saturationLevel.toFixed(2);
-    });
-    saturationSlider.addEventListener('change', () => {
-        if (currentPalette) { regeneratePalette(); }
-    });
+    function setupTabs() {
+        document.querySelectorAll('.details-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.details-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                const target = tab.dataset.tab === 'workbench' ? 'tabWorkbench' : 'tabSyntax';
+                document.getElementById(target).classList.add('active');
+            });
+        });
+    }
 
-    luminositySlider.addEventListener('input', () => {
-        luminosityLevel = parseFloat(luminositySlider.value);
-        luminosityValue.textContent = luminosityLevel.toFixed(2);
-    });
-    luminositySlider.addEventListener('change', () => {
-        if (currentPalette) { regeneratePalette(); }
-    });
+    function setupSliders() {
+        const sliders = [
+            { el: elements.saturationSlider, val: elements.saturationValue, key: 'saturation' },
+            { el: elements.luminositySlider, val: elements.luminosityValue, key: 'luminosity' },
+            { el: elements.variationSlider, val: elements.variationValue, key: 'variation' },
+            { el: elements.syntaxSaturationSlider, val: elements.syntaxSaturationValue, key: 'syntaxSaturation' }
+        ];
 
-    variationSlider.addEventListener('input', () => {
-        variationLevel = parseFloat(variationSlider.value);
-        variationValue.textContent = variationLevel.toFixed(2);
-    });
-    variationSlider.addEventListener('change', () => {
-        if (currentPalette) { regeneratePalette(); }
-    });
+        sliders.forEach(s => {
+            s.el.addEventListener('input', () => {
+                s.val.textContent = parseFloat(s.el.value).toFixed(s.key === 'syntaxSaturation' ? 1 : 2);
+                if (s.key === 'syntaxSaturation') {
+                    syntaxSaturation = parseFloat(s.el.value);
+                    if (autoPreview) autoApplyPreview();
+                } else {
+                    updateStateFromSliders();
+                    regeneratePalette(false);
+                }
+            });
+        });
+    }
 
-    syntaxSaturationSlider.addEventListener('input', () => {
-        syntaxSaturation = parseFloat(syntaxSaturationSlider.value);
-        syntaxSaturationValue.textContent = syntaxSaturation.toFixed(1);
-        if (autoPreview && currentPalette) {
-            autoApplyPreview();
-        }
-    });
+    function updateStateFromSliders() {
+        saturationLevel = parseFloat(elements.saturationSlider.value);
+        luminosityLevel = parseFloat(elements.luminositySlider.value);
+        variationLevel = parseFloat(elements.variationSlider.value);
+    }
 
+    function setupHarmony() {
+        document.querySelectorAll('.harmony-option').forEach(opt => {
+            opt.addEventListener('click', () => {
+                document.querySelectorAll('.harmony-option').forEach(o => o.classList.remove('active'));
+                opt.classList.add('active');
+                currentHarmony = opt.dataset.harmony;
+                regeneratePalette(true);
+            });
+        });
+    }
 
-    autoPreviewCheckbox.addEventListener('change', () => {
-        autoPreview = autoPreviewCheckbox.checked;
-        if (autoPreview && currentPalette) {
-            autoApplyPreview();
-        }
-    });
+    function setupColorInputs() {
+        elements.baseColor.addEventListener('input', () => {
+            elements.baseColorText.value = elements.baseColor.value;
+            regeneratePalette(true);
+        });
 
-    function regeneratePalette() {
-        if (currentPalette) {
-            if (regenerateTimer) {
-                clearTimeout(regenerateTimer);
+        elements.baseColorText.addEventListener('input', () => {
+            const val = elements.baseColorText.value;
+            if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                elements.baseColor.value = val;
+                regeneratePalette(true);
             }
-            regenerateTimer = setTimeout(() => {
-                vscode.postMessage({ 
-                    command: 'generate', 
-                    baseColor: baseColor.value, 
-                    harmony: currentHarmony, 
-                    contrastLevel,
-                    saturation: saturationLevel,
-                    luminosity: luminosityLevel,
-                    variation: variationLevel,
-                    syntaxSaturation
-                });
-                regenerateTimer = null;
-            }, 200);
-        }
+        });
+    }
+
+    function setupActionButtons() {
+        document.getElementById('btnRandomPalette').addEventListener('click', () => {
+            vscode.postMessage({ 
+                command: 'random', 
+                harmony: currentHarmony,
+                saturation: saturationLevel,
+                luminosity: luminosityLevel,
+                variation: variationLevel,
+                syntaxSaturation
+            });
+        });
+
+        document.getElementById('btnSaveCurrent').addEventListener('click', () => {
+            if (currentPalette) {
+                vscode.postMessage({ command: 'savePalette', name: currentPalette.name });
+            }
+        });
+
+        document.getElementById('btnImport').addEventListener('click', () => {
+            vscode.postMessage({ command: 'importTheme' });
+        });
+
+        document.getElementById('btnExport').addEventListener('click', () => {
+            if (currentPalette) {
+                vscode.postMessage({ command: 'exportTheme', themeName: currentPalette.name });
+            }
+        });
+
+        document.getElementById('btnClearPreview').addEventListener('click', () => {
+            vscode.postMessage({ command: 'clearPreview' });
+            isPreviewActive = false;
+            elements.resetWarning.classList.remove('show');
+            showToast('Preview cleared');
+        });
+
+        elements.autoPreview.addEventListener('change', () => {
+            autoPreview = elements.autoPreview.checked;
+            if (autoPreview) autoApplyPreview();
+        });
+    }
+
+    function setupSearch() {
+        elements.themeSearch.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase().trim();
+            document.querySelectorAll('.theme-element').forEach(el => {
+                const name = el.querySelector('.theme-element-name').textContent.toLowerCase();
+                const key = el.dataset.key.toLowerCase();
+                const isMatch = name.includes(term) || key.includes(term);
+                el.style.display = isMatch ? 'flex' : 'none';
+            });
+            
+            document.querySelectorAll('.theme-details-group').forEach(group => {
+                const visible = Array.from(group.querySelectorAll('.theme-element')).some(el => el.style.display !== 'none');
+                group.style.display = visible ? 'block' : 'none';
+            });
+        });
+    }
+
+    function regeneratePalette(forceNew = false) {
+        if (regenerateTimer) clearTimeout(regenerateTimer);
+        regenerateTimer = setTimeout(() => {
+            vscode.postMessage({ 
+                command: forceNew ? 'generate' : 'adjust', 
+                baseColor: elements.baseColor.value, 
+                harmony: currentHarmony,
+                saturation: saturationLevel,
+                luminosity: luminosityLevel,
+                variation: variationLevel,
+                syntaxSaturation,
+                autoPreview
+            });
+        }, 150);
     }
 
     function autoApplyPreview() {
-        if (currentPalette && autoPreview) {
-            if (debounceTimer) {
-                clearTimeout(debounceTimer);
-            }
-            debounceTimer = setTimeout(() => {
-                vscode.postMessage({ 
-                    command: 'previewTheme',
-                    syntaxSaturation
-                });
-                isPreviewActive = true;
-                resetWarning.classList.add('show');
-                debounceTimer = null;
-            }, 150);
-        }
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            vscode.postMessage({ command: 'previewTheme', syntaxSaturation });
+            isPreviewActive = true;
+            elements.resetWarning.classList.add('show');
+        }, 400);
     }
 
-    function updateStatusBar(palette) {
-        if (!palette) return;
-        const swatch = document.getElementById('paletteInfoSwatch');
-        const hexEl = document.getElementById('paletteInfoHex');
-        const harmonyEl = document.getElementById('paletteInfoHarmony');
-        if (!swatch || !hexEl || !harmonyEl) return;
-        const baseHex = palette.baseColor ? palette.baseColor.hex : (palette.colors && palette.colors[0] ? palette.colors[0].hex : '');
-        if (baseHex) {
-            swatch.style.background = baseHex;
-            hexEl.textContent = baseHex.toUpperCase();
-        }
-        harmonyEl.textContent = (palette.harmony || '').replace(/([A-Z])/g, ' $1').trim();
+    function syncControlsFromPalette(palette) {
+        if (!palette || !palette.options) return;
+
+        saturationLevel = palette.options.saturation ?? saturationLevel;
+        luminosityLevel = palette.options.luminosity ?? luminosityLevel;
+        variationLevel = palette.options.variation ?? variationLevel;
+
+        elements.saturationSlider.value = String(saturationLevel);
+        elements.luminositySlider.value = String(luminosityLevel);
+        elements.variationSlider.value = String(variationLevel);
+
+        elements.saturationValue.textContent = saturationLevel.toFixed(2);
+        elements.luminosityValue.textContent = luminosityLevel.toFixed(2);
+        elements.variationValue.textContent = variationLevel.toFixed(2);
     }
 
-    let richToastEl = null;
-    let richToastTimer = null;
-
-    function showToastRich(hexColor, harmony) {
-        if (!richToastEl) {
-            richToastEl = document.createElement('div');
-            richToastEl.className = 'toast-rich';
-            richToastEl.innerHTML =
-                '<div class="toast-rich-swatch" id="richToastSwatch"></div>' +
-                '<div class="toast-rich-content">' +
-                    '<div class="toast-rich-title" id="richToastHex"></div>' +
-                    '<div class="toast-rich-sub" id="richToastHarmony"></div>' +
-                '</div>';
-            document.body.appendChild(richToastEl);
-        }
-        const swatchEl = document.getElementById('richToastSwatch');
-        const hexEl = document.getElementById('richToastHex');
-        const harmonyEl = document.getElementById('richToastHarmony');
-        if (swatchEl) swatchEl.style.background = hexColor;
-        if (hexEl) hexEl.textContent = hexColor.toUpperCase();
-        if (harmonyEl) harmonyEl.textContent = (harmony || '').replace(/([A-Z])/g, ' $1').trim() || 'Random';
-        
-        if (richToastTimer) clearTimeout(richToastTimer);
-        richToastEl.classList.add('show');
-        richToastTimer = setTimeout(() => {
-            richToastEl.classList.remove('show');
-        }, 3000);
-    }
-
-    // Harmony selection
-    const btnRandom = document.getElementById('btnRandomPalette');
-    document.querySelectorAll('.harmony-option').forEach(opt => {
-        opt.addEventListener('click', () => {
-            document.querySelectorAll('.harmony-option').forEach(o => o.classList.remove('active'));
-            opt.classList.add('active');
-            currentHarmony = opt.dataset.harmony;
-            if (currentPalette) {
-                regeneratePalette();
-            }
-            // Hint the Random button
-            btnRandom.classList.add('harmony-changed');
-        });
-    });
-
-
-    // Base color changes
-    baseColor.addEventListener('input', () => {
-        baseColorText.value = baseColor.value;
-        if (autoPreview && currentPalette) {
-            regeneratePalette();
-        }
-    });
-
-    baseColorText.addEventListener('input', () => {
-        if (/^#[0-9a-fA-F]{6}$/.test(baseColorText.value)) {
-            baseColor.value = baseColorText.value;
-            if (autoPreview && currentPalette) {
-                regeneratePalette();
-            }
-        }
-    });
-
-
-    document.getElementById('btnExport').addEventListener('click', () => {
-        if (!currentPalette) return;
-        vscode.postMessage({ command: 'exportTheme', themeName: currentPalette.name + ' Theme' });
-    });
-
-    document.getElementById('btnImport').addEventListener('click', () => {
-        vscode.postMessage({ command: 'importTheme' });
-    });
-
-    document.getElementById('btnSaveCurrent').addEventListener('click', () => {
-        if (!currentPalette) return;
-        vscode.postMessage({ command: 'savePalette', name: currentPalette.name });
-        showToast('Palette saved');
-    });
-
-    document.getElementById('btnRandomPalette').addEventListener('click', () => {
-        btnRandom.classList.remove('harmony-changed');
-        vscode.postMessage({ 
-            command: 'random', 
-            harmony: currentHarmony, 
-            contrastLevel,
-            saturation: saturationLevel,
-            luminosity: luminosityLevel,
-            variation: variationLevel,
-            syntaxSaturation
-        });
-    });
-
-    // Initialize theme details
-    initThemeDetails();
-
-    function initThemeDetails() {
-        const containers = {
-            editorElements: themeElements.editor,
-            errorsElements: themeElements.errors,
-            overviewRulerElements: themeElements.overviewRuler,
-            gutterElements: themeElements.gutter,
-            sidebarElements: themeElements.sidebar,
-            activityBarElements: themeElements.activityBar,
-            titleBarElements: themeElements.titleBar,
-            statusBarElements: themeElements.statusBar,
-            tabsElements: themeElements.tabs,
-            panelElements: themeElements.panel,
-            terminalElements: themeElements.terminal,
-            formsElements: themeElements.forms,
-            listsElements: themeElements.lists,
-            widgetsElements: themeElements.widgets,
-            quickInputElements: themeElements.quickInput,
-            peekViewElements: themeElements.peekView,
-            notificationsElements: themeElements.notifications,
-            menuElements: themeElements.menu,
-            scrollbarElements: themeElements.scrollbar,
-            breadcrumbElements: themeElements.breadcrumb,
-            diffElements: themeElements.diff,
-            gitElements: themeElements.git,
-            badgeElements: themeElements.badge,
-            debugElements: themeElements.debug,
-            progressBarElements: themeElements.progressBar,
-            symbolsElements: themeElements.symbols,
+    function renderThemeElements() {
+        const mapping = {
+            'editorElements': themeElements.workbench.editor,
+            'errorsElements': themeElements.workbench.errors,
+            'sidebarElements': themeElements.workbench.sidebar,
+            'activityBarElements': themeElements.workbench.activityBar,
+            'titleBarElements': themeElements.workbench.titleBar,
+            'statusBarElements': themeElements.workbench.statusBar,
+            'tabsElements': themeElements.workbench.tabs,
+            'terminalElements': themeElements.workbench.terminal,
+            'panelElements': themeElements.workbench.panel,
+            'listsElements': themeElements.workbench.lists,
+            'widgetsElements': themeElements.workbench.widgets,
+            'formsElements': themeElements.workbench.forms,
+            'quickInputElements': themeElements.workbench.quickInput,
+            'peekViewElements': themeElements.workbench.peekView,
+            'notificationsElements': themeElements.workbench.notifications,
+            'menuElements': themeElements.workbench.menu,
+            'scrollbarElements': themeElements.workbench.scrollbar,
+            'breadcrumbElements': themeElements.workbench.breadcrumb,
+            'diffElements': themeElements.workbench.diff,
+            'gitElements': themeElements.workbench.git,
+            'gutterElements': themeElements.workbench.gutter,
+            'overviewRulerElements': themeElements.workbench.overviewRuler,
+            'badgeElements': themeElements.workbench.badge,
+            'debugElements': themeElements.workbench.debug,
+            'progressBarElements': themeElements.workbench.progressBar,
+            'symbolsElements': themeElements.workbench.symbols,
+            'syntaxCoreElements': themeElements.syntax.core,
+            'syntaxFunctionsElements': themeElements.syntax.functions,
+            'syntaxTypesElements': themeElements.syntax.types,
+            'syntaxVarsElements': themeElements.syntax.vars,
+            'syntaxOpsElements': themeElements.syntax.ops,
+            'syntaxMarkupElements': themeElements.syntax.markup,
+            'syntaxSpecialElements': themeElements.syntax.special
         };
 
-        Object.entries(containers).forEach(([containerId, elements]) => {
-            const container = document.getElementById(containerId);
-            if (!container) return; // Skip if container doesn't exist
-            
-            elements.forEach(element => {
-                const div = document.createElement('div');
-                div.className = 'theme-element';
-                div.innerHTML =
-                    '<div class="theme-color-preview" style="background:#4a90d9" data-key="' + element.key + '"></div>' +
-                    '<div class="theme-element-info">' +
-                        '<div class="theme-element-name">' + element.name + '</div>' +
-                        '<div class="theme-element-desc">' + element.desc + '</div>' +
-                    '</div>';
-                
-                const colorPreview = div.querySelector('.theme-color-preview');
-                colorPreview.addEventListener('click', () => {
-                    const input = document.createElement('input');
-                    input.type = 'color';
-                    input.value = rgbToHex(colorPreview.style.backgroundColor) || '#4a90d9';
-                    input.addEventListener('change', () => {
-                        colorPreview.style.background = input.value;
-                        if (autoPreview && currentPalette) {
-                            vscode.postMessage({ command: 'updateThemeElement', key: element.key, color: input.value });
-                        }
-                        showToast('Updated ' + element.name);
-                    });
-                    input.click();
-                });
-                
-                container.appendChild(div);
+        Object.entries(mapping).forEach(([id, items]) => {
+            const container = document.getElementById(id);
+            if (!container) return;
+            container.innerHTML = '';
+            items.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'theme-element';
+                el.dataset.key = item.key;
+                el.innerHTML = \`
+                    <div class="theme-color-preview" data-key="\${item.key}"></div>
+                    <div class="theme-element-info">
+                        <div class="theme-element-name">\${item.name}</div>
+                        <div class="theme-element-desc">\${item.desc}</div>
+                    </div>
+                    <div class="theme-element-hex">#000000</div>
+                \`;
+                el.querySelector('.theme-color-preview').addEventListener('click', () => openColorPicker(item.key, item.name));
+                container.appendChild(el);
             });
         });
-
-        // Search functionality
-        const themeSearch = document.getElementById('themeSearch');
-        if (themeSearch) {
-            themeSearch.addEventListener('input', (e) => {
-                const term = e.target.value.toLowerCase().trim();
-                const groups = document.querySelectorAll('.theme-details-group');
-                
-                groups.forEach(group => {
-                    let hasVisible = false;
-                    const elements = group.querySelectorAll('.theme-element');
-                    
-                    elements.forEach(el => {
-                        const name = el.querySelector('.theme-element-name').textContent.toLowerCase();
-                        const desc = el.querySelector('.theme-element-desc').textContent.toLowerCase();
-                        const key = el.querySelector('.theme-color-preview').getAttribute('data-key').toLowerCase();
-                        
-                        if (term === '' || name.includes(term) || desc.includes(term) || key.includes(term)) {
-                            el.style.display = 'flex';
-                            hasVisible = true;
-                        } else {
-                            el.style.display = 'none';
-                        }
-                    });
-                    
-                    if (term !== '' && !hasVisible) {
-                        group.style.display = 'none';
-                    } else {
-                        group.style.display = 'block';
-                    }
-                });
-            });
-        }
     }
 
-    function rgbToHex(rgb) {
-        if (!rgb || rgb.indexOf('rgb') === -1) return rgb;
-        const parts = rgb.match(/\\d+/g);
-        if (!parts || parts.length < 3) return '#4a90d9';
-        return '#' + parts.slice(0, 3).map(n => {
-            const hex = parseInt(n).toString(16);
-            return hex.length === 1 ? '0' + hex : hex;
-        }).join('');
-    }
-
-    function updateThemeDetailsFromPalette(themeColors) {
-        const overlay = document.getElementById('themeDetailsOverlay');
-        if (!themeColors) {
-            // No palette loaded — show the disabled overlay
-            if (overlay) overlay.classList.remove('hidden');
-            return;
-        }
-        // Palette loaded — hide overlay and apply real colors
-        if (overlay) overlay.classList.add('hidden');
-        
-        // Use the server-computed colors directly — they match exactly what the preview applies
-        Object.keys(themeColors).forEach(key => {
-            const preview = document.querySelector('[data-key="' + key + '"]');
-            if (preview) {
-                let color = themeColors[key];
-                // Strip alpha suffix for display (colors like #aabbcc44 -> #aabbcc)
-                if (color && color.length === 9) {
-                    color = color.slice(0, 7);
-                } else if (color && color.length === 5) {
-                    color = color.slice(0, 4);
-                }
-                preview.style.background = color || '#4a90d9';
+    function openColorPicker(key, name) {
+        const preview = document.querySelector(\`.theme-color-preview[data-key="\${key}"]\`);
+        elements.globalColorInput.value = rgbToHex(preview.style.backgroundColor);
+        const handleChange = () => {
+            const color = elements.globalColorInput.value;
+            preview.style.backgroundColor = color;
+            const row = preview.closest('.theme-element');
+            if (row) {
+                const hexLabel = row.querySelector('.theme-element-hex');
+                if (hexLabel) hexLabel.textContent = color.toUpperCase();
             }
-        });
+            vscode.postMessage({ command: 'updateThemeElement', key, color });
+            showToast(\`Updated \${name}\`);
+            elements.globalColorInput.removeEventListener('change', handleChange);
+        };
+        elements.globalColorInput.addEventListener('change', handleChange);
+        elements.globalColorInput.click();
     }
 
-
-    function renderPalette(palette, themeColors) {
+    function updatePalette(palette, themeColors, syntaxTokens) {
         currentPalette = palette;
-        const colors = palette.colors;
-
-        baseColor.value = palette.baseColor.hex;
-        baseColorText.value = palette.baseColor.hex;
-
-        editableStrip.innerHTML = '';
-        colors.forEach((c, index) => {
+        syncControlsFromPalette(palette);
+        elements.paletteInfoSwatch.style.backgroundColor = palette.baseColor.hex;
+        elements.paletteInfoHex.textContent = palette.baseColor.hex.toUpperCase();
+        elements.paletteInfoHarmony.textContent = palette.harmony;
+        elements.themeDetailsOverlay.classList.add('hidden');
+        
+        elements.editableStrip.innerHTML = '';
+        palette.colors.forEach((c, i) => {
             const div = document.createElement('div');
             div.className = 'strip-color';
-            div.style.background = c.hex;
-            const contrast = getContrastColor(c.hex, contrastLevel);
-            div.innerHTML =
-                '<div class="strip-label" style="color:' + contrast + '">' +
-                    '<span class="strip-hex">' + c.hex.toUpperCase() + '</span>' +
-                    '<span class="strip-name">' + (c.name || 'Color ' + (index + 1)) + '</span>' +
-                '</div>';
-            div.addEventListener('click', () => editStripColor(index, c.hex));
-            editableStrip.appendChild(div);
+            div.style.backgroundColor = c.hex;
+            div.innerHTML = \`<div class="strip-label"><span class="strip-hex">\${c.hex.toUpperCase()}</span><span class="strip-name">\${c.name}</span></div>\`;
+            div.addEventListener('click', () => openColorPickerForStrip(i, c.hex));
+            elements.editableStrip.appendChild(div);
         });
 
-        // Use server-computed themeColors if available, fallback gracefully
-        updateThemeDetailsFromPalette(themeColors);
-
-        if (autoPreview) {
-            autoApplyPreview();
+        if (themeColors) {
+            Object.entries(themeColors).forEach(([key, color]) => {
+                const preview = document.querySelector(\`.theme-color-preview[data-key="\${key}"]\`);
+                if (preview) {
+                    preview.style.backgroundColor = color;
+                    const row = preview.closest('.theme-element');
+                    if (row) {
+                        const hexLabel = row.querySelector('.theme-element-hex');
+                        if (hexLabel) hexLabel.textContent = color.toUpperCase().substring(0, 7);
+                    }
+                }
+            });
         }
-    }
 
-    function luminance(hex) {
-        const r = parseInt(hex.slice(1,3),16)/255;
-        const g = parseInt(hex.slice(3,5),16)/255;
-        const b = parseInt(hex.slice(5,7),16)/255;
-        const rLin = r <= 0.03928 ? r / 12.92 : Math.pow((r + 0.055) / 1.055, 2.4);
-        const gLin = g <= 0.03928 ? g / 12.92 : Math.pow((g + 0.055) / 1.055, 2.4);
-        const bLin = b <= 0.03928 ? b / 12.92 : Math.pow((b + 0.055) / 1.055, 2.4);
-        return 0.2126 * rLin + 0.7152 * gLin + 0.0722 * bLin;
-    }
+        if (syntaxTokens) {
+            const syntaxMap = {
+                'comments': 'comment',
+                'keywords': 'keyword',
+                'strings': 'string',
+                'numbers': 'number',
+                'function': 'function',
+                'classes': 'class',
+                'namespaces': 'namespace',
+                'variables': 'variable',
+                'constants': 'constant',
+                'object': 'property',
+                'operators': 'operator',
+                'punctuation': 'punctuation',
+                'tags': 'tag',
+                'attributes': 'attribute',
+                'decorators': 'decorator',
+                'regular': 'regex'
+            };
 
-    function contrastRatio(color1, color2) {
-        const l1 = luminance(color1);
-        const l2 = luminance(color2);
-        const lighter = Math.max(l1, l2);
-        const darker = Math.min(l1, l2);
-        return (lighter + 0.05) / (darker + 0.05);
-    }
-
-    function getContrastColor(bgColor, level = contrastLevel) {
-        const bgLum = luminance(bgColor);
-        const targetRatio = level === 'aa' ? 4.5 : level === 'aaa' ? 7 : level * 10;
-        let textColor = '#ffffff';
-        if (contrastRatio(bgColor, textColor) >= targetRatio) {
-            return textColor;
+            syntaxTokens.forEach(token => {
+                const namePart = token.name.toLowerCase().split(' ')[0];
+                const keySuffix = syntaxMap[namePart] || namePart;
+                const syntaxKey = \`syntax.\${keySuffix}\`;
+                const preview = document.querySelector(\`.theme-color-preview[data-key="\${syntaxKey}"]\`);
+                if (preview && token.settings.foreground) {
+                    preview.style.backgroundColor = token.settings.foreground;
+                    const row = preview.closest('.theme-element');
+                    if (row) {
+                        const hexLabel = row.querySelector('.theme-element-hex');
+                        if (hexLabel) hexLabel.textContent = token.settings.foreground.toUpperCase();
+                    }
+                }
+            });
         }
-        textColor = '#000000';
-        if (contrastRatio(bgColor, textColor) >= targetRatio) {
-            return textColor;
-        }
-        if (bgLum > 0.5) {
-            const lightness = Math.max(0.05, 1 - (targetRatio * (bgLum + 0.05) - 0.05));
-            return hslToHex(0, 0, Math.min(0.95, lightness));
-        } else {
-            const lightness = Math.min(0.95, (targetRatio * (bgLum + 0.05) - 0.05));
-            return hslToHex(0, 0, Math.max(0.05, lightness));
-        }
+        
+        if (autoPreview) autoApplyPreview();
     }
 
-    function hslToHex(h, s, l) {
-        const c = (1 - Math.abs(2 * l - 1)) * s;
-        const x = c * (1 - Math.abs((h / 60) % 2 - 1));
-        const m = l - c / 2;
-        let r, g, b;
-        if (h >= 0 && h < 60) { r = c; g = x; b = 0; }
-        else if (h >= 60 && h < 120) { r = x; g = c; b = 0; }
-        else if (h >= 120 && h < 180) { r = 0; g = c; b = x; }
-        else if (h >= 180 && h < 240) { r = 0; g = x; b = c; }
-        else if (h >= 240 && h < 300) { r = x; g = 0; b = c; }
-        else { r = c; g = 0; b = x; }
-        r = Math.round((r + m) * 255);
-        g = Math.round((g + m) * 255);
-        b = Math.round((b + m) * 255);
-        return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
-    }
-
-    function editColor(index, currentColor) {
-        const input = document.createElement('input');
-        input.type = 'color';
-        input.value = currentColor;
-        input.addEventListener('change', (e) => {
-            vscode.postMessage({ command: 'editColor', index, newColor: e.target.value, autoPreview });
-        });
-        input.click();
-    }
-
-    function adjustBrightness(hex, amount) {
-        let r = parseInt(hex.slice(1,3),16);
-        let g = parseInt(hex.slice(3,5),16);
-        let b = parseInt(hex.slice(5,7),16);
-        r = Math.max(0, Math.min(255, r + amount));
-        g = Math.max(0, Math.min(255, g + amount));
-        b = Math.max(0, Math.min(255, b + amount));
-        return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
-    }
-
-    function adjustOpacity(hex, opacity) {
-        const r = parseInt(hex.slice(1,3),16);
-        const g = parseInt(hex.slice(3,5),16);
-        const b = parseInt(hex.slice(5,7),16);
-        return 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')';
+    function openColorPickerForStrip(index, hex) {
+        elements.globalColorInput.value = hex;
+        const handleChange = () => {
+            const newColor = elements.globalColorInput.value;
+            vscode.postMessage({ command: 'editColor', index, newColor, autoPreview });
+            elements.globalColorInput.removeEventListener('change', handleChange);
+        };
+        elements.globalColorInput.addEventListener('change', handleChange);
+        elements.globalColorInput.click();
     }
 
     function renderSaved(palettes) {
-        savedList.innerHTML = '';
-        if (!palettes || palettes.length === 0) {
-            savedList.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">No saved palettes yet</div>';
+        elements.savedList.innerHTML = '';
+        if (!palettes.length) {
+            elements.savedList.innerHTML = '<div class="saved-card-meta">No saved palettes</div>';
             return;
         }
         palettes.forEach(p => {
             const card = document.createElement('div');
             card.className = 'saved-card';
-            let strip = '';
-            p.colors.forEach(cl => {
-                strip += '<div style="background:' + cl.hex + '"></div>';
-            });
-            card.innerHTML =
-                '<div class="saved-card-header">' +
-                    '<span class="saved-card-name">' + p.name + '</span>' +
-                    '<span class="saved-card-meta">' + p.harmony + '</span>' +
-                '</div>' +
-                (p.filePath ? '<div class="saved-card-path" title="' + p.filePath + '">' + p.filePath + '</div>' : '') +
-                '<div class="saved-card-strip">' + strip + '</div>' +
-                '<div class="saved-card-actions">' +
-                    '<button class="btn load-btn">Load</button>' +
-                    '<button class="btn btn-danger del-btn">Delete</button>' +
-                '</div>';
-            card.querySelector('.load-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                vscode.postMessage({ command: 'loadPalette', id: p.id });
-                showToast('Loaded: ' + p.name);
-            });
-            card.querySelector('.del-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                vscode.postMessage({ command: 'deletePalette', id: p.id });
-                showToast('Deleted: ' + p.name);
-            });
-            savedList.appendChild(card);
+            card.innerHTML = \`
+                <div class="saved-card-header"><span class="saved-card-name">\${p.name}</span><span class="saved-card-meta">\${p.harmony}</span></div>
+                <div class="saved-card-strip">\${p.colors.map(c => \`<div style="background-color: \${c.hex}"></div>\`).join('')}</div>
+                <div class="saved-card-actions"><button class="btn btn-sm btn-load">Load</button><button class="btn btn-sm btn-danger btn-delete">Delete</button></div>
+            \`;
+            card.querySelector('.btn-load').addEventListener('click', () => vscode.postMessage({ command: 'loadPalette', id: p.id }));
+            card.querySelector('.btn-delete').addEventListener('click', (e) => { e.stopPropagation(); vscode.postMessage({ command: 'deletePalette', id: p.id }); });
+            elements.savedList.appendChild(card);
         });
     }
 
-    window.addEventListener('message', e => {
-        const msg = e.data;
+    function showToast(msg) {
+        elements.toast.textContent = msg;
+        elements.toast.classList.add('show');
+        setTimeout(() => elements.toast.classList.remove('show'), 2500);
+    }
+
+    function rgbToHex(rgb) {
+        if (!rgb || rgb.startsWith('#')) return rgb || '#000000';
+        const match = rgb.match(/\\d+/g);
+        if (!match) return '#000000';
+        const [r, g, b] = match.map(Number);
+        return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+    }
+
+    window.addEventListener('message', event => {
+        const msg = event.data;
         switch (msg.command) {
-            case 'updatePalette':
-                renderPalette(msg.palette, msg.themeColors);
-                updateStatusBar(msg.palette);
-                break;
-            case 'savedPalettes':
-                renderSaved(msg.palettes);
-                break;
+            case 'updatePalette': updatePalette(msg.palette, msg.themeColors, msg.syntaxTokens); break;
+            case 'savedPalettes': renderSaved(msg.palettes); break;
             case 'clearPreview':
-                resetUIState();
+                elements.themeDetailsOverlay.classList.remove('hidden');
+                elements.resetWarning.classList.remove('show');
+                isPreviewActive = false;
                 break;
         }
     });
 
-    function resetUIState() {
-        currentPalette = null;
-        editableStrip.innerHTML = '';
-        
-        // Show disabled overlay for theme details
-        const overlay = document.getElementById('themeDetailsOverlay');
-        if (overlay) overlay.classList.remove('hidden');
-
-        // Reset theme details previews to default color
-        document.querySelectorAll('.theme-color-preview').forEach(el => {
-            el.style.background = '#4a90d9';
-        });
-
-        // Hide reset warning if visible
-        if (resetWarning) resetWarning.classList.remove('show');
-        
-        isPreviewActive = false;
-    }
-
-    // Button handlers
-    document.getElementById('btnClearPreview').addEventListener('click', () => {
-        vscode.postMessage({ command: 'clearPreview' });
-        resetUIState();
-        showToast('Theme reset to default');
-    });
-
-    vscode.postMessage({ command: 'getSavedPalettes' });
-
-    function editStripColor(index, currentColor) {
-        const input = document.createElement('input');
-        input.type = 'color';
-        input.value = currentColor;
-        input.addEventListener('change', () => {
-            vscode.postMessage({ command: 'editColor', index, newColor: input.value, autoPreview });
-            showToast('Updated color ' + (index + 1));
-        });
-        input.click();
-    }
+    init();
 })();`;
 }

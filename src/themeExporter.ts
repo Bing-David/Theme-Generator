@@ -77,17 +77,14 @@ export function mapPaletteToTheme(
   const activityBarBg =
     type === "dark" ? adjustBrightness(base, -35) : adjustBrightness(base, 35);
 
-  // Garantizar contraste WCAG AA (4.5:1) para texto normal
   const fg = getContrastColor(editorBg, 4.5);
   const sidebarFg = getContrastColor(sidebarBg, 4.5);
   const activityBarFg = getContrastColor(activityBarBg, 4.5);
 
-  // Ajustar colores de acento con contraste garantizado
   const accentContrast = ensureContrastRatio(accent, editorBg, 3.0);
   const secondaryContrast = ensureContrastRatio(secondary, editorBg, 4.5);
   const tertiaryContrast = ensureContrastRatio(tertiary, editorBg, 4.5);
 
-  // Aplicar saturación adicional a colores de sintaxis
   const accentSyntax = ensureContrastRatio(
     adjustSaturation(accent, syntaxSaturation),
     editorBg,
@@ -890,7 +887,28 @@ export function mapPaletteToTheme(
       ? ensureContrastRatio(adjustBrightness(fg, -30), editorBg, 3.0, false)
       : ensureContrastRatio(adjustBrightness(fg, 30), editorBg, 3.0, false);
 
+  // Derived syntax colors
+  const bracketColor = ensureContrastRatio(
+    adjustBrightness(fg, type === "dark" ? -20 : 20), editorBg, 3.0
+  );
+  const paramColor = ensureContrastRatio(
+    adjustSaturation(tertiary, syntaxSaturation * 0.9), editorBg, 4.0
+  );
+  const propColor = ensureContrastRatio(
+    adjustSaturation(secondary, syntaxSaturation * 0.85), editorBg, 4.0
+  );
+  const decoratorColor = ensureContrastRatio(
+    adjustSaturation(accent, syntaxSaturation * 1.1), editorBg, 3.5
+  );
+  const regexColor = ensureContrastRatio(
+    adjustSaturation(secondary, syntaxSaturation * 1.15), editorBg, 3.5
+  );
+  const langConstColor = ensureContrastRatio(
+    adjustSaturation(tertiary, syntaxSaturation * 1.1), editorBg, 4.0
+  );
+
   const tokenColors: TokenColor[] = [
+    // ── Core ──────────────────────────────────────────────────────────────
     {
       name: "Comments",
       scope: ["comment", "punctuation.definition.comment"],
@@ -902,9 +920,31 @@ export function mapPaletteToTheme(
       settings: { foreground: accentSyntax },
     },
     {
+      name: "Control Flow",
+      scope: [
+        "keyword.control", "keyword.control.flow",
+        "keyword.control.import", "keyword.control.export",
+        "keyword.control.from", "keyword.control.as",
+      ],
+      settings: { foreground: accentSyntax },
+    },
+    {
       name: "Strings",
       scope: ["string", "string.quoted"],
       settings: { foreground: secondarySyntax },
+    },
+    {
+      name: "Template Literals",
+      scope: ["string.template", "template.expression"],
+      settings: { foreground: secondarySyntax },
+    },
+    {
+      name: "Template Expression Punctuation",
+      scope: [
+        "punctuation.definition.template-expression.begin",
+        "punctuation.definition.template-expression.end",
+      ],
+      settings: { foreground: ensureContrastRatio(accentSyntax, editorBg, 3.5) },
     },
     {
       name: "Numbers",
@@ -912,15 +952,61 @@ export function mapPaletteToTheme(
       settings: { foreground: tertiarySyntax },
     },
     {
-      name: "Functions",
+      name: "Language Constants (true/false/null/undefined)",
+      scope: [
+        "constant.language", "constant.language.boolean",
+        "constant.language.null", "constant.language.undefined",
+      ],
+      settings: { foreground: langConstColor },
+    },
+    {
+      name: "Escape Characters",
+      scope: ["constant.character.escape"],
+      settings: { foreground: tertiarySyntax },
+    },
+    // ── Functions ─────────────────────────────────────────────────────────
+    {
+      name: "Function Declarations",
       scope: ["entity.name.function", "support.function"],
       settings: { foreground: accentSyntax },
     },
+    {
+      name: "Function Calls",
+      scope: [
+        "variable.function",
+        "entity.name.function.call",
+        "meta.function-call entity.name.function",
+      ],
+      settings: { foreground: accentSyntax },
+    },
+    {
+      name: "Function Parameters",
+      scope: ["variable.parameter", "meta.function.parameter"],
+      settings: { foreground: paramColor, fontStyle: "italic" },
+    },
+    // ── Types & Classes ───────────────────────────────────────────────────
     {
       name: "Classes & Types",
       scope: ["entity.name.type", "entity.name.class", "support.type"],
       settings: { foreground: secondarySyntax },
     },
+    {
+      name: "Interfaces & Type Parameters",
+      scope: [
+        "entity.name.type.interface", "entity.name.type.type-parameter",
+        "support.class", "meta.type.parameters",
+      ],
+      settings: { foreground: secondarySyntax, fontStyle: "italic" },
+    },
+    {
+      name: "Namespaces & Modules",
+      scope: [
+        "entity.name.namespace", "entity.name.module",
+        "support.module", "variable.other.module",
+      ],
+      settings: { foreground: secondarySyntax },
+    },
+    // ── Variables ─────────────────────────────────────────────────────────
     {
       name: "Variables",
       scope: ["variable", "variable.other"],
@@ -932,12 +1018,44 @@ export function mapPaletteToTheme(
       settings: { foreground: tertiarySyntax },
     },
     {
+      name: "Enum Members",
+      scope: ["variable.other.enummember", "constant.other.enum"],
+      settings: { foreground: tertiarySyntax },
+    },
+    {
+      name: "Object Properties",
+      scope: [
+        "support.variable.property",
+        "variable.other.property",
+        "meta.property-name",
+      ],
+      settings: { foreground: propColor },
+    },
+    {
+      name: "Object Keys",
+      scope: [
+        "support.type.property-name",
+        "meta.object-literal.key",
+        "string.unquoted.label",
+      ],
+      settings: { foreground: fg },
+    },
+    // ── Operators & Punctuation ───────────────────────────────────────────
+    {
       name: "Operators",
       scope: ["keyword.operator"],
-      settings: {
-        foreground: ensureContrastRatio(accentSyntax, editorBg, 3.0),
-      },
+      settings: { foreground: ensureContrastRatio(accentSyntax, editorBg, 3.0) },
     },
+    {
+      name: "Punctuation & Brackets",
+      scope: [
+        "punctuation", "meta.brace",
+        "punctuation.definition.block", "punctuation.section",
+        "meta.delimiter",
+      ],
+      settings: { foreground: bracketColor },
+    },
+    // ── Markup & Web ──────────────────────────────────────────────────────
     {
       name: "Tags (HTML/XML)",
       scope: ["entity.name.tag"],
@@ -953,6 +1071,35 @@ export function mapPaletteToTheme(
       scope: ["support.type.property-name.css"],
       settings: { foreground: secondarySyntax },
     },
+    {
+      name: "JSX / TSX Components",
+      scope: [
+        "support.class.component",
+        "entity.name.tag.tsx",
+        "entity.name.tag.jsx",
+      ],
+      settings: { foreground: secondarySyntax },
+    },
+    // ── Decorators & Regex ────────────────────────────────────────────────
+    {
+      name: "Decorators & Annotations",
+      scope: [
+        "meta.decorator", "entity.name.function.decorator",
+        "punctuation.decorator", "storage.type.annotation",
+      ],
+      settings: { foreground: decoratorColor, fontStyle: "italic" },
+    },
+    {
+      name: "Regular Expressions",
+      scope: ["string.regexp", "constant.regexp", "keyword.other.regex"],
+      settings: { foreground: regexColor },
+    },
+    // ── Diagnostics ───────────────────────────────────────────────────────
+    {
+      name: "Invalid / Deprecated",
+      scope: ["invalid", "invalid.illegal", "invalid.deprecated"],
+      settings: { foreground: ensureContrastRatio("#f48771", editorBg, 3.5) },
+    },
   ];
 
   const themeDefinition: any = {
@@ -961,6 +1108,19 @@ export function mapPaletteToTheme(
     colors: workbenchColors,
     tokenColors,
   };
+
+  // Apply manual syntax overrides if they exist
+  if (palette.overrides) {
+    Object.entries(palette.overrides).forEach(([key, color]) => {
+      if (key.startsWith('syntax.')) {
+        const syntaxName = key.replace('syntax.', '').toLowerCase();
+        const token = tokenColors.find(t => t.name.toLowerCase().includes(syntaxName));
+        if (token) {
+          token.settings.foreground = color;
+        }
+      }
+    });
+  }
 
   // Store original palette for perfect round-trip import/export
   themeDefinition._sourcePalette = palette;
