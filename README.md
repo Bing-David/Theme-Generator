@@ -6,7 +6,7 @@ Generate, customize, preview, import, and export Visual Studio Code color themes
 
 ## Overview
 
-VSC Theme Generator is a VS Code extension focused on fast theme creation with visual controls. It combines harmony-based palette generation, live theme preview, manual UI/token editing, and round-trip import/export so you can keep refining a theme over time.
+VSC Theme Generator is a VS Code extension focused on fast theme creation with visual controls. It combines harmony-based palette generation, a real temporary theme preview, manual UI and syntax editing, semantic token support, and round-trip import/export so you can keep refining a theme over time.
 
 ## Features
 
@@ -19,7 +19,23 @@ VSC Theme Generator is a VS Code extension focused on fast theme creation with v
   - Split-complementary
   - Tetradic
   - Monochromatic
+  - Square
+  - Double-complementary
+  - Compound
+  - Accented-analogous
+  - Neutral
+  - Warm
+  - Cool
+  - Polychromatic
+  - Rainbow
+  - Duotone
+  - Grayscale
+  - Near-monochromatic
+  - Split-triadic
+  - Pentadic
+  - Hexadic
 - Generate a random palette with one click
+- Use `Lock base color` when you want randomization to preserve the current base color
 
 ### Color controls
 
@@ -31,29 +47,32 @@ VSC Theme Generator is a VS Code extension focused on fast theme creation with v
 
 - Live webview-based palette editor
 - Editable palette strip for direct color changes
-- Theme Details panel for manual UI color overrides
-- Syntax Tokens panel for token-level color adjustments
+- Curated `UI Colors` editor for workbench and interface colors
+- `Syntax` editor for TextMate token colors
+- `Semantic` editor for modern semantic tokens
 - Search inside theme properties
 
 ### Preview and persistence
 
-- Apply the current theme as a live VS Code preview
-- Clear preview at any time
+- Apply the current theme as a real temporary VS Code theme preview
+- Use `Auto-preview` to apply changes automatically while editing
+- Clear preview at any time and restore the previous or default VS Code theme
 - Save palettes inside VS Code for later reuse
 - Load and delete saved palettes from the activity bar view
 
 ### Import and export
 
 - Export themes as standard VS Code `.json` color theme files
-- Import previously exported themes back into the editor
+- Import previously exported themes back into the editor and preview them immediately
 - Preserve palette metadata on export for improved round-trip editing
+- Preserve manual `UI Colors`, `Syntax`, and `Semantic` overrides in exported themes
 
 ## How It Works
 
 1. Open the palette generator.
 2. Pick a harmony mode or generate a random palette.
 3. Refine the palette with the color property sliders.
-4. Edit individual UI colors or syntax token colors if needed.
+4. Edit individual UI colors, TextMate syntax tokens, or semantic tokens if needed.
 5. Preview the result in VS Code.
 6. Save the palette or export it as a theme file.
 
@@ -66,6 +85,7 @@ The extension contributes these commands:
 - `Theme Generator: Preview Current Theme`
 - `Theme Generator: Clear Theme Preview`
 - `Theme Generator: Export Current Theme`
+- `Theme Generator: Import Theme`
 - `Theme Generator: Save Current Palette`
 - `Theme Generator: Load Palette`
 - `Theme Generator: Delete Palette`
@@ -87,30 +107,34 @@ The extension adds a `Theme Generator` view container in the VS Code activity ba
 
 - VS Code `^1.85.0`
 - Node.js 20+
-- npm | Caution, another package manager is recommended
+- npm or pnpm
 
 ### Install dependencies
 
 ```bash
 npm install
+pnpm install
 ```
 
 ### Type check
 
 ```bash
 npm run check-types
+pnpm run check-types
 ```
 
 ### Lint
 
 ```bash
 npm run lint
+pnpm run lint
 ```
 
 ### Build
 
 ```bash
 npm run compile
+pnpm run compile
 ```
 
 ### Production package build
@@ -118,12 +142,14 @@ npm run compile
 ```bash
 vsce package
 npm run package
+pnpm run package
 ```
 
 ### Watch mode
 
 ```bash
 npm run watch
+pnpm run watch
 ```
 
 ### Run the extension
@@ -134,28 +160,30 @@ Press `F5` in VS Code to launch an Extension Development Host.
 
 ```text
 Theme-Generator/
-├── src/
-│   ├── extension.ts
-│   ├── colorGenerator.ts
-│   ├── customPalette.ts
-│   ├── sidebarProvider.ts
-│   ├── themeExporter.ts
-│   ├── webviewHtml.ts
-│   ├── webviewPanel.ts
-│   ├── webviewScript.ts
-│   └── webviewStyle.ts
-├── media/
-├── dist/
-├── package.json
-├── tsconfig.json
-└── README.md
+|-- src/
+|   |-- extension.ts
+|   |-- colorGenerator.ts
+|   |-- customPalette.ts
+|   |-- sidebarProvider.ts
+|   |-- themeCatalog.ts
+|   |-- themeExporter.ts
+|   |-- webviewHtml.ts
+|   |-- webviewPanel.ts
+|   |-- webviewScript.ts
+|   `-- webviewStyle.ts
+|-- themes/
+|-- media/
+|-- dist/
+|-- package.json
+|-- tsconfig.json
+`-- README.md
 ```
 
 ## Notes
 
 - Themes exported from the current extension version preserve palette metadata for better re-import behavior.
-- Older theme files that do not include embedded palette metadata may import approximately rather than perfectly.
-- Manual color overrides in Theme Details are included in exported themes.
+- External theme files that do not include embedded palette metadata are reconstructed into the current editor model.
+- Manual `UI Colors`, `Syntax`, and `Semantic` overrides are included in exported themes.
 
 ## Publishing
 

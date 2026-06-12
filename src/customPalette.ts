@@ -1,5 +1,11 @@
 import * as vscode from "vscode";
-import { Palette, ColorInfo, createColorInfo } from "./colorGenerator";
+import {
+  Palette,
+  createColorInfo,
+  createPaletteFromImport,
+  detectThemeTypeFromBase,
+  generatePalette,
+} from "./colorGenerator";
 
 const STORAGE_KEY = "vscThemeGenerator.customPalettes";
 
@@ -10,16 +16,20 @@ export class CustomPaletteManager {
     this.load();
   }
 
-  // ── Persistence ────────────────────────────────────────────────────────
+  // Persistence
 
   private load(): void {
     const raw = this.globalState.get<string>(STORAGE_KEY);
-    if (raw) {
-      try {
-        this.palettes = JSON.parse(raw);
-      } catch {
-        this.palettes = [];
-      }
+    if (!raw) {
+      this.palettes = [];
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(raw);
+      this.palettes = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      this.palettes = [];
     }
   }
 
@@ -27,47 +37,34 @@ export class CustomPaletteManager {
     await this.globalState.update(STORAGE_KEY, JSON.stringify(this.palettes));
   }
 
-  // ── CRUD ───────────────────────────────────────────────────────────────
+  // CRUD
 
   getAll(): Palette[] {
     return [...this.palettes];
   }
 
   getById(id: string): Palette | undefined {
-    return this.palettes.find((p) => p.id === id);
+    return this.palettes.find((palette) => palette.id === id);
   }
 
   async add(palette: Palette): Promise<void> {
-    const existingIndex = this.palettes.findIndex(p => p.id === palette.id);
-    if (existingIndex !== -1) {
-      this.palettes[existingIndex] = palette;
+    const index = this.palettes.findIndex((item) => item.id === palette.id);
+    if (index >= 0) {
+      this.palettes[index] = palette;
     } else {
       this.palettes.push(palette);
     }
     await this.save();
   }
 
-  async update(id: string, updates: Partial<Palette>): Promise<boolean> {
-    const idx = this.palettes.findIndex((p) => p.id === id);
-    if (idx === -1) {
+  async remove(id: string): Promise<boolean> {
+    const previousLength = this.palettes.length;
+    this.palettes = this.palettes.filter((palette) => palette.id !== id);
+    if (this.palettes.length === previousLength) {
       return false;
     }
-    this.palettes[idx] = { ...this.palettes[idx], ...updates };
     await this.save();
     return true;
-  }
-
-  async remove(id: string): Promise<boolean> {
-    console.log(`[PaletteManager] Removing palette: ${id}. Current count: ${this.palettes.length}`);
-    const before = this.palettes.length;
-    this.palettes = this.palettes.filter((p) => p.id !== id);
-    console.log(`[PaletteManager] After filter: ${this.palettes.length}`);
-    
-    if (this.palettes.length !== before) {
-      await this.save();
-      return true;
-    }
-    return false;
   }
 
   async clear(): Promise<void> {
@@ -75,44 +72,24 @@ export class CustomPaletteManager {
     await this.save();
   }
 
-  // ── Custom Palette Creation ────────────────────────────────────────────
+  // Utilities
 
   createCustomPalette(name: string, hexColors: string[]): Palette {
-    const colors: ColorInfo[] = hexColors.map((hex, i) =>
-      createColorInfo(hex, `Custom ${i + 1}`),
+    const colors = hexColors.map((hex, index) =>
+      createColorInfo(hex, `Custom ${index + 1}`),
     );
-    const baseColor = colors[0] ?? createColorInfo("#000000", "Base");
-
-    return {
-      id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    const baseColor =
+      colors[Math.floor(colors.length / 2)] ??
+      createColorInfo("#161616", "Base");
+    return createPaletteFromImport({
       name,
+      harmony:
+        detectThemeTypeFromBase(baseColor.hex) === "dark"
+          ? "analogous"
+          : "complementary",
       baseColor,
-      harmony: "complementary",
-      colors,
-      createdAt: Date.now(),
-    };
-  }
-
-  async addColorToPalette(paletteId: string, hex: string): Promise<boolean> {
-    const palette = this.getById(paletteId);
-    if (!palette) {
-      return false;
-    }
-    palette.colors.push(
-      createColorInfo(hex, `Custom ${palette.colors.length + 1}`),
-    );
-    return this.update(paletteId, { colors: palette.colors });
-  }
-
-  async removeColorFromPalette(
-    paletteId: string,
-    colorIndex: number,
-  ): Promise<boolean> {
-    const palette = this.getById(paletteId);
-    if (!palette || colorIndex < 0 || colorIndex >= palette.colors.length) {
-      return false;
-    }
-    palette.colors.splice(colorIndex, 1);
-    return this.update(paletteId, { colors: palette.colors });
+      seedColors: colors,
+      derivedRoles: generatePalette(baseColor.hex, "analogous").derivedRoles,
+    });
   }
 }

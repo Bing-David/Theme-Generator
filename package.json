@@ -2,7 +2,7 @@
   "name": "vsc-theme-generator",
   "displayName": "VSC Theme Generator",
   "description": "Generate, customize, and export VS Code color themes with real-time preview. Import existing themes to edit them with interactive color controls based on color theory harmonies.",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "publisher": "JrDev",
   "icon": "media/palette-icon.png",
   "repository": {
@@ -48,6 +48,13 @@
         }
       ]
     },
+    "themes": [
+      {
+        "label": "Theme Generator Preview",
+        "uiTheme": "vs-dark",
+        "path": "./themes/theme-generator-preview-color-theme.json"
+      }
+    ],
     "commands": [
       {
         "command": "vsc-theme-generator.openPalette",
@@ -78,6 +85,12 @@
         "title": "Export Current Theme",
         "category": "Theme Generator",
         "icon": "$(export)"
+      },
+      {
+        "command": "vsc-theme-generator.importTheme",
+        "title": "Import Theme",
+        "category": "Theme Generator",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "vsc-theme-generator.saveCurrent",

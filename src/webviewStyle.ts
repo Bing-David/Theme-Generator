@@ -186,13 +186,13 @@ body {
 /* ── Harmony Grid ────────────────────────────────────────────────────── */
 .harmony-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 4px;
 }
 
 .harmony-option {
     padding: 7px 6px;
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 500;
     text-align: center;
     background: var(--bg-tertiary);
@@ -386,6 +386,11 @@ input[type="text"]:focus, select:focus {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+}
+
+.base-lock-row {
+    margin-top: 10px;
+    justify-content: flex-start;
 }
 
 .action-btns {
@@ -743,6 +748,16 @@ input[type="text"]:focus, select:focus {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.theme-element-key {
+    font-size: 9px;
+    color: var(--accent);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.85;
 }
 
 .theme-element-hex {

@@ -1,29 +1,29 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as fs from "fs";
+import * as path from "path";
+import * as vscode from "vscode";
 import {
   Palette,
   HarmonyType,
-  getContrastColor,
-  hexToHsl,
-  hslToHex,
-  hexToRgb,
-  rgbToHsl,
+  createColorInfo,
+  createPaletteFromImport,
+  detectThemeTypeFromBase,
   ensureContrastRatio,
+  generatePalette,
+  getContrastColor,
+  getRoleColor,
+  hexToHsl,
+  normalizeHex,
 } from "./colorGenerator";
+import {
+  EditableThemeItem,
+  SEMANTIC_EDITABLE_ITEMS,
+  TEXTMATE_EDITABLE_ITEMS,
+  WORKBENCH_EDITABLE_ITEMS,
+} from "./themeCatalog";
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// Types
 
-export type ThemeType = "dark" | "light";
-
-export interface ThemeDefinition {
-  name: string;
-  type: ThemeType;
-  colors: Record<string, string>;
-  tokenColors: TokenColor[];
-}
-
-export interface TokenColor {
+export interface TokenColorRule {
   name: string;
   scope: string | string[];
   settings: {
@@ -32,1103 +32,517 @@ export interface TokenColor {
   };
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-function detectThemeType(palette: Palette): ThemeType {
-  const baseL = hexToHsl(palette.baseColor.hex).l;
-  return baseL < 50 ? "dark" : "light";
+export interface ThemeDefinition {
+  name: string;
+  type: "dark" | "light";
+  colors: Record<string, string>;
+  tokenColors: TokenColorRule[];
+  semanticHighlighting: boolean;
+  semanticTokenColors: Record<string, string>;
+  _sourcePalette?: Palette;
 }
 
-function adjustBrightness(hex: string, amount: number): string {
+export interface EditableThemeColorState {
+  workbench: Record<string, string>;
+  textMate: Record<string, string>;
+  semantic: Record<string, string>;
+}
+
+// Preview
+
+const PREVIEW_THEME_LABEL = "Theme Generator Preview";
+const PREVIEW_THEME_FILE = "theme-generator-preview-color-theme.json";
+const DEFAULT_DARK_THEME = "VS Code Dark";
+const DEFAULT_LIGHT_THEME = "VS Code Light";
+
+let previewExtensionPath: string | undefined;
+let previousColorTheme: string | undefined;
+let previousPreviewThemeType: ThemeDefinition["type"] = "dark";
+
+export function initializeThemePreview(extensionPath: string): void {
+  previewExtensionPath = extensionPath;
+}
+
+function getPreviewThemePath(): string {
+  if (!previewExtensionPath) {
+    throw new Error("Preview theme path not initialized");
+  }
+  return path.join(previewExtensionPath, "themes", PREVIEW_THEME_FILE);
+}
+
+// Helpers
+
+function withAlpha(hex: string, alpha: string): string {
+  return `${normalizeHex(hex)}${alpha}`;
+}
+
+function tone(hex: string, amount: number): string {
   const hsl = hexToHsl(hex);
-  const newL = Math.max(0, Math.min(100, hsl.l + amount));
-  return hslToHex({ ...hsl, l: newL });
+  const next = { ...hsl, l: Math.max(2, Math.min(98, hsl.l + amount)) };
+  return normalizeHex(
+    `#${requireColorHex(next)}`,
+  );
 }
 
-function adjustSaturation(hex: string, multiplier: number): string {
+function saturate(hex: string, amount: number): string {
   const hsl = hexToHsl(hex);
-  const newS = Math.max(0, Math.min(100, hsl.s * multiplier));
-  return hslToHex({ ...hsl, s: newS });
+  const next = { ...hsl, s: Math.max(4, Math.min(98, hsl.s + amount)) };
+  return normalizeHex(
+    `#${requireColorHex(next)}`,
+  );
 }
 
-// ── Mapper: Palette → VS Code Theme ────────────────────────────────────────
+function requireColorHex(hsl: { h: number; s: number; l: number }): string {
+  const hue = ((hsl.h % 360) + 360) % 360;
+  const saturation = Math.max(0, Math.min(100, hsl.s)) / 100;
+  const lightness = Math.max(0, Math.min(100, hsl.l)) / 100;
+
+  if (saturation === 0) {
+    const channel = Math.round(lightness * 255)
+      .toString(16)
+      .padStart(2, "0");
+    return `${channel}${channel}${channel}`;
+  }
+
+  const c = (1 - Math.abs(2 * lightness - 1)) * saturation;
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = lightness - c / 2;
+
+  let rPrime = 0;
+  let gPrime = 0;
+  let bPrime = 0;
+
+  if (hue < 60) {
+    rPrime = c;
+    gPrime = x;
+  } else if (hue < 120) {
+    rPrime = x;
+    gPrime = c;
+  } else if (hue < 180) {
+    gPrime = c;
+    bPrime = x;
+  } else if (hue < 240) {
+    gPrime = x;
+    bPrime = c;
+  } else if (hue < 300) {
+    rPrime = x;
+    bPrime = c;
+  } else {
+    rPrime = c;
+    bPrime = x;
+  }
+
+  const toHex = (value: number) =>
+    Math.round((value + m) * 255)
+      .toString(16)
+      .padStart(2, "0");
+
+  return `${toHex(rPrime)}${toHex(gPrime)}${toHex(bPrime)}`;
+}
+
+function getWorkbenchBaseColors(palette: Palette): Record<string, string> {
+  const roles = palette.derivedRoles;
+  const type = detectThemeTypeFromBase(palette.baseColor.hex);
+  const isDark = type === "dark";
+  const accentText = getContrastColor(roles.accent, 4.5);
+  const accentAltText = getContrastColor(roles.accentAlt, 4.5);
+
+  return {
+    foreground: roles.textPrimary,
+    disabledForeground: roles.textMuted,
+    focusBorder: roles.accent,
+    errorForeground: roles.error,
+    "icon.foreground": roles.textSecondary,
+
+    "window.activeBorder": roles.accentMuted.slice(0, 7),
+    "window.inactiveBorder": roles.surfaceAlt,
+
+    "titleBar.activeBackground": roles.surfaceAlt,
+    "titleBar.activeForeground": roles.textPrimary,
+    "titleBar.inactiveBackground": roles.surface,
+    "titleBar.inactiveForeground": roles.textSecondary,
+    "titleBar.border": roles.surfaceElevated,
+
+    "activityBar.background": roles.surfaceAlt,
+    "activityBar.foreground": roles.textPrimary,
+    "activityBar.inactiveForeground": roles.textMuted,
+    "activityBar.border": roles.surfaceElevated,
+    "activityBar.activeBorder": roles.accent,
+    "activityBar.activeBackground": roles.surfaceAlt,
+    "activityBarBadge.background": roles.accent,
+    "activityBarBadge.foreground": accentText,
+
+    "sideBar.background": roles.surface,
+    "sideBar.foreground": roles.textSecondary,
+    "sideBar.border": roles.surfaceElevated,
+    "sideBarTitle.foreground": roles.textPrimary,
+    "sideBarSectionHeader.background": roles.surfaceElevated,
+    "sideBarSectionHeader.foreground": roles.textSecondary,
+    "sideBarSectionHeader.border": roles.surfaceAlt,
+
+    "statusBar.background": roles.accent,
+    "statusBar.foreground": accentText,
+    "statusBar.border": roles.surfaceAlt,
+    "statusBar.debuggingBackground": roles.warning,
+    "statusBar.debuggingForeground": getContrastColor(roles.warning, 4.5),
+    "statusBar.noFolderBackground": roles.accentAlt,
+    "statusBar.noFolderForeground": accentAltText,
+    "statusBarItem.hoverBackground": withAlpha(roles.textPrimary, "18"),
+    "statusBarItem.prominentBackground": withAlpha(roles.textPrimary, "14"),
+    "statusBarItem.prominentForeground": accentText,
+
+    "editorGroup.background": roles.base,
+    "editorGroup.border": roles.surfaceAlt,
+    "editorGroupHeader.tabsBackground": roles.surface,
+    "editorGroupHeader.tabsBorder": roles.surfaceElevated,
+    "tab.activeBackground": roles.base,
+    "tab.activeForeground": roles.textPrimary,
+    "tab.activeBorder": roles.accent,
+    "tab.activeBorderTop": roles.accent,
+    "tab.inactiveBackground": roles.surface,
+    "tab.inactiveForeground": roles.textMuted,
+    "tab.hoverBackground": roles.surfaceElevated,
+    "tab.hoverForeground": roles.textPrimary,
+    "tab.border": roles.surfaceAlt,
+    "tab.unfocusedActiveForeground": roles.textSecondary,
+    "tab.unfocusedInactiveForeground": roles.textMuted,
+
+    "editor.background": roles.base,
+    "editor.foreground": roles.textPrimary,
+    "editor.lineHighlightBackground": roles.surfaceElevated,
+    "editor.selectionBackground": withAlpha(roles.accent, "44"),
+    "editor.selectionForeground": roles.textPrimary,
+    "editor.inactiveSelectionBackground": withAlpha(roles.accentAlt, "2f"),
+    "editor.wordHighlightBackground": withAlpha(roles.accentAlt, "22"),
+    "editor.wordHighlightStrongBackground": withAlpha(roles.accent, "33"),
+    "editor.findMatchBackground": withAlpha(roles.warning, "70"),
+    "editor.findMatchHighlightBackground": withAlpha(roles.warning, "32"),
+    "editor.hoverHighlightBackground": withAlpha(roles.accentAlt, "20"),
+    "editor.rangeHighlightBackground": withAlpha(roles.surfaceElevated, "aa"),
+    "editorCursor.foreground": roles.accent,
+    "editorWhitespace.foreground": roles.textMuted,
+    "editorIndentGuide.background1": withAlpha(roles.textMuted, "55"),
+    "editorIndentGuide.activeBackground1": withAlpha(roles.textSecondary, "88"),
+    "editorLineNumber.foreground": roles.textMuted,
+    "editorLineNumber.activeForeground": roles.textPrimary,
+    "editorRuler.foreground": withAlpha(roles.textMuted, "44"),
+    "editorLink.activeForeground": roles.accent,
+
+    "editorGutter.background": roles.base,
+    "editorGutter.modifiedBackground": roles.diffModified,
+    "editorGutter.addedBackground": roles.diffAdded,
+    "editorGutter.deletedBackground": roles.diffDeleted,
+
+    "editorOverviewRuler.border": roles.surfaceAlt,
+    "editorBracketMatch.background": withAlpha(roles.accentAlt, "20"),
+    "editorBracketMatch.border": roles.accent,
+    "editorBracketHighlight.foreground1": roles.accent,
+    "editorBracketHighlight.foreground2": roles.accentAlt,
+    "editorBracketHighlight.foreground3": roles.warning,
+    "editorBracketHighlight.foreground4": roles.info,
+    "editorBracketHighlight.foreground5": roles.success,
+    "editorBracketHighlight.foreground6": roles.error,
+    "editorBracketHighlight.unexpectedBracket.foreground": roles.error,
+
+    "list.activeSelectionBackground": withAlpha(roles.accent, "38"),
+    "list.activeSelectionForeground": roles.textPrimary,
+    "list.inactiveSelectionBackground": withAlpha(roles.accentAlt, "2a"),
+    "list.inactiveSelectionForeground": roles.textSecondary,
+    "list.hoverBackground": roles.surfaceElevated,
+    "list.hoverForeground": roles.textPrimary,
+    "list.focusBackground": withAlpha(roles.accent, "40"),
+    "list.focusForeground": roles.textPrimary,
+    "list.highlightForeground": roles.accent,
+    "list.errorForeground": roles.error,
+    "list.warningForeground": roles.warning,
+    "tree.indentGuidesStroke": withAlpha(roles.textMuted, "66"),
+    "tree.tableColumnsBorder": roles.surfaceAlt,
+    "tree.tableOddRowsBackground": withAlpha(roles.surfaceElevated, "88"),
+
+    "input.background": roles.surfaceElevated,
+    "input.foreground": roles.textPrimary,
+    "input.border": roles.surfaceAlt,
+    "input.placeholderForeground": roles.textMuted,
+    "inputOption.activeBackground": withAlpha(roles.accent, "22"),
+    "inputOption.activeBorder": roles.accent,
+    "inputOption.activeForeground": roles.textPrimary,
+    "button.background": roles.accent,
+    "button.foreground": accentText,
+    "button.border": roles.surfaceAlt,
+    "button.hoverBackground": saturate(tone(roles.accent, isDark ? 6 : -6), 6),
+    "button.secondaryBackground": roles.surfaceAlt,
+    "button.secondaryForeground": roles.textPrimary,
+    "button.secondaryHoverBackground": roles.surfaceElevated,
+    "dropdown.background": roles.surfaceElevated,
+    "dropdown.foreground": roles.textPrimary,
+    "dropdown.border": roles.surfaceAlt,
+    "dropdown.listBackground": roles.surface,
+    "checkbox.background": roles.surfaceElevated,
+    "checkbox.foreground": roles.textPrimary,
+    "checkbox.border": roles.surfaceAlt,
+    "radio.activeBackground": withAlpha(roles.accent, "22"),
+    "radio.activeForeground": roles.textPrimary,
+    "radio.activeBorder": roles.accent,
+    "radio.inactiveForeground": roles.textMuted,
+
+    "quickInput.background": roles.surface,
+    "quickInput.foreground": roles.textPrimary,
+    "quickInputList.focusBackground": withAlpha(roles.accent, "30"),
+    "quickInputList.focusForeground": roles.textPrimary,
+    "quickInputTitle.background": roles.surfaceElevated,
+    "pickerGroup.border": roles.surfaceAlt,
+    "pickerGroup.foreground": roles.accentAlt,
+
+    "commandCenter.background": roles.surfaceElevated,
+    "commandCenter.foreground": roles.textPrimary,
+    "commandCenter.border": roles.surfaceAlt,
+    "commandCenter.activeBackground": roles.surfaceAlt,
+
+    "panel.background": roles.base,
+    "panel.border": roles.surfaceAlt,
+    "panelTitle.activeBorder": roles.accent,
+    "panelTitle.activeForeground": roles.textPrimary,
+    "panelTitle.inactiveForeground": roles.textMuted,
+    "panelInput.border": roles.surfaceAlt,
+
+    "terminal.background": roles.base,
+    "terminal.foreground": roles.textPrimary,
+    "terminalCursor.foreground": roles.accent,
+    "terminal.selectionBackground": withAlpha(roles.accent, "44"),
+    "terminal.border": roles.surfaceAlt,
+    "terminal.ansiBlack": roles.terminalAnsi[0],
+    "terminal.ansiRed": roles.terminalAnsi[1],
+    "terminal.ansiGreen": roles.terminalAnsi[2],
+    "terminal.ansiYellow": roles.terminalAnsi[3],
+    "terminal.ansiBlue": roles.terminalAnsi[4],
+    "terminal.ansiMagenta": roles.terminalAnsi[5],
+    "terminal.ansiCyan": roles.terminalAnsi[6],
+    "terminal.ansiWhite": roles.terminalAnsi[7],
+    "terminal.ansiBrightBlack": roles.terminalAnsi[8],
+    "terminal.ansiBrightRed": roles.terminalAnsi[9],
+    "terminal.ansiBrightGreen": roles.terminalAnsi[10],
+    "terminal.ansiBrightYellow": roles.terminalAnsi[11],
+    "terminal.ansiBrightBlue": roles.terminalAnsi[12],
+    "terminal.ansiBrightMagenta": roles.terminalAnsi[13],
+    "terminal.ansiBrightCyan": roles.terminalAnsi[14],
+    "terminal.ansiBrightWhite": roles.terminalAnsi[15],
+
+    "notifications.background": roles.surface,
+    "notifications.foreground": roles.textPrimary,
+    "notifications.border": roles.surfaceAlt,
+    "notificationCenterHeader.background": roles.surfaceAlt,
+    "notificationCenterHeader.foreground": roles.textPrimary,
+    "notificationLink.foreground": roles.accent,
+
+    "menu.background": roles.surface,
+    "menu.foreground": roles.textPrimary,
+    "menu.selectionBackground": withAlpha(roles.accent, "38"),
+    "menu.selectionForeground": roles.textPrimary,
+    "menu.separatorBackground": roles.surfaceAlt,
+
+    "scrollbar.shadow": withAlpha("#000000", isDark ? "88" : "33"),
+    "scrollbarSlider.background": withAlpha(roles.textMuted, "45"),
+    "scrollbarSlider.hoverBackground": withAlpha(roles.textSecondary, "55"),
+    "scrollbarSlider.activeBackground": withAlpha(roles.textPrimary, "66"),
+
+    "breadcrumb.foreground": roles.textSecondary,
+    "breadcrumb.focusForeground": roles.textPrimary,
+    "breadcrumb.activeSelectionForeground": roles.accent,
+    "breadcrumbPicker.background": roles.surface,
+
+    "editorWidget.background": roles.surface,
+    "editorWidget.foreground": roles.textPrimary,
+    "editorWidget.border": roles.surfaceAlt,
+    "editorSuggestWidget.background": roles.surface,
+    "editorSuggestWidget.foreground": roles.textPrimary,
+    "editorSuggestWidget.selectedBackground": withAlpha(roles.accent, "30"),
+    "editorSuggestWidget.highlightForeground": roles.accent,
+    "editorHoverWidget.background": roles.surface,
+    "editorHoverWidget.foreground": roles.textPrimary,
+    "editorHoverWidget.border": roles.surfaceAlt,
+
+    "peekView.border": roles.accent,
+    "peekViewEditor.background": roles.base,
+    "peekViewResult.background": roles.surface,
+    "peekViewResult.selectionBackground": withAlpha(roles.accent, "30"),
+    "peekViewTitle.background": roles.surfaceAlt,
+    "peekViewTitleLabel.foreground": roles.textPrimary,
+
+    "diffEditor.insertedTextBackground": withAlpha(roles.diffAdded, "33"),
+    "diffEditor.removedTextBackground": withAlpha(roles.diffDeleted, "33"),
+    "diffEditor.border": roles.surfaceAlt,
+
+    "merge.currentHeaderBackground": withAlpha(roles.diffAdded, "44"),
+    "merge.currentContentBackground": withAlpha(roles.diffAdded, "24"),
+    "merge.incomingHeaderBackground": withAlpha(roles.info, "44"),
+    "merge.incomingContentBackground": withAlpha(roles.info, "24"),
+
+    "gitDecoration.addedResourceForeground": roles.diffAdded,
+    "gitDecoration.modifiedResourceForeground": roles.diffModified,
+    "gitDecoration.deletedResourceForeground": roles.diffDeleted,
+    "gitDecoration.untrackedResourceForeground": roles.diffAdded,
+    "gitDecoration.ignoredResourceForeground": roles.textMuted,
+    "gitDecoration.conflictingResourceForeground": roles.warning,
+
+    "symbolIcon.arrayForeground": roles.info,
+    "symbolIcon.booleanForeground": roles.info,
+    "symbolIcon.classForeground": roles.accentAlt,
+    "symbolIcon.colorForeground": roles.info,
+    "symbolIcon.constantForeground": roles.warning,
+    "symbolIcon.constructorForeground": roles.accent,
+    "symbolIcon.enumeratorForeground": roles.warning,
+    "symbolIcon.enumeratorMemberForeground": roles.warning,
+    "symbolIcon.eventForeground": roles.info,
+    "symbolIcon.fieldForeground": roles.textSecondary,
+    "symbolIcon.fileForeground": roles.textSecondary,
+    "symbolIcon.folderForeground": roles.textSecondary,
+    "symbolIcon.functionForeground": roles.accent,
+    "symbolIcon.interfaceForeground": roles.accentAlt,
+    "symbolIcon.keyForeground": roles.info,
+    "symbolIcon.keywordForeground": roles.accent,
+    "symbolIcon.methodForeground": roles.accent,
+    "symbolIcon.moduleForeground": roles.info,
+    "symbolIcon.namespaceForeground": roles.info,
+    "symbolIcon.nullForeground": roles.warning,
+    "symbolIcon.numberForeground": roles.warning,
+    "symbolIcon.objectForeground": roles.textSecondary,
+    "symbolIcon.operatorForeground": roles.accent,
+    "symbolIcon.packageForeground": roles.info,
+    "symbolIcon.propertyForeground": roles.textSecondary,
+    "symbolIcon.referenceForeground": roles.info,
+    "symbolIcon.snippetForeground": roles.textPrimary,
+    "symbolIcon.stringForeground": roles.success,
+    "symbolIcon.structForeground": roles.accentAlt,
+    "symbolIcon.textForeground": roles.textPrimary,
+    "symbolIcon.typeParameterForeground": roles.info,
+    "symbolIcon.unitForeground": roles.warning,
+    "symbolIcon.variableForeground": roles.textSecondary,
+
+    "settings.headerForeground": roles.textPrimary,
+    "settings.modifiedItemIndicator": roles.accent,
+    "settings.dropdownBackground": roles.surfaceElevated,
+    "settings.dropdownForeground": roles.textPrimary,
+    "settings.dropdownBorder": roles.surfaceAlt,
+    "settings.dropdownListBorder": roles.surfaceAlt,
+    "settings.textInputBackground": roles.surfaceElevated,
+    "settings.textInputForeground": roles.textPrimary,
+    "settings.textInputBorder": roles.surfaceAlt,
+    "settings.numberInputBackground": roles.surfaceElevated,
+    "settings.numberInputForeground": roles.textPrimary,
+    "settings.numberInputBorder": roles.surfaceAlt,
+    "settings.checkboxBackground": roles.surfaceElevated,
+    "settings.checkboxForeground": roles.textPrimary,
+    "settings.checkboxBorder": roles.surfaceAlt,
+
+    "welcomePage.background": roles.base,
+    "welcomePage.buttonBackground": roles.surfaceAlt,
+    "welcomePage.buttonHoverBackground": roles.surfaceElevated,
+    "walkThrough.embeddedEditorBackground": roles.surface,
+
+    "badge.background": roles.accent,
+    "badge.foreground": accentText,
+    "progressBar.background": roles.accent,
+
+    "editorError.foreground": roles.error,
+    "editorError.border": withAlpha(roles.error, "00"),
+    "editorWarning.foreground": roles.warning,
+    "editorWarning.border": withAlpha(roles.warning, "00"),
+    "editorInfo.foreground": roles.info,
+    "editorInfo.border": withAlpha(roles.info, "00"),
+    "editorHint.foreground": roles.textMuted,
+    "inputValidation.errorBackground": withAlpha(roles.error, "18"),
+    "inputValidation.errorBorder": roles.error,
+    "inputValidation.warningBackground": withAlpha(roles.warning, "18"),
+    "inputValidation.warningBorder": roles.warning,
+    "inputValidation.infoBackground": withAlpha(roles.info, "18"),
+    "inputValidation.infoBorder": roles.info,
+  };
+}
+
+function getTextMateRules(palette: Palette): TokenColorRule[] {
+  const roles = palette.derivedRoles;
+  return TEXTMATE_EDITABLE_ITEMS.map((item) => ({
+    name: item.id,
+    scope: item.scopes ?? item.id,
+    settings: {
+      foreground:
+        palette.themeOverrides.textMate[item.id] ??
+        ensureContrastRatio(getRoleColor(roles, item.defaultRole), roles.base, 3),
+      fontStyle: item.id === "comment" || item.id === "parameter" || item.id === "decorator"
+        ? "italic"
+        : undefined,
+    },
+  }));
+}
+
+function getSemanticTokenColors(palette: Palette): Record<string, string> {
+  const roles = palette.derivedRoles;
+  const colors: Record<string, string> = {};
+
+  for (const item of SEMANTIC_EDITABLE_ITEMS) {
+    colors[item.semanticSelector ?? item.id] =
+      palette.themeOverrides.semantic[item.id] ??
+      ensureContrastRatio(getRoleColor(roles, item.defaultRole), roles.base, 3);
+  }
+
+  return colors;
+}
+
+function applyWorkbenchOverrides(
+  colors: Record<string, string>,
+  palette: Palette,
+): Record<string, string> {
+  return {
+    ...colors,
+    ...palette.themeOverrides.workbench,
+  };
+}
+
+// Public API
 
 export function mapPaletteToTheme(
   palette: Palette,
   themeName?: string,
-  syntaxSaturation: number = 1.0,
 ): ThemeDefinition {
-  const colors = palette.colors.map((c) => c.hex);
-  const type = detectThemeType(palette);
-
-  // Pick colors from palette (pad with base if fewer)
-  const pick = (i: number) => colors[i % colors.length];
-  const base = pick(0);
-  const accent = pick(1);
-  const secondary = pick(2) ?? accent;
-  const tertiary = pick(3) ?? secondary;
-
-  const bg =
-    type === "dark" ? adjustBrightness(base, -20) : adjustBrightness(base, 20);
-  const editorBg =
-    type === "dark" ? adjustBrightness(base, -25) : adjustBrightness(base, 25);
-  const sidebarBg =
-    type === "dark" ? adjustBrightness(base, -30) : adjustBrightness(base, 30);
-  const activityBarBg =
-    type === "dark" ? adjustBrightness(base, -35) : adjustBrightness(base, 35);
-
-  const fg = getContrastColor(editorBg, 4.5);
-  const sidebarFg = getContrastColor(sidebarBg, 4.5);
-  const activityBarFg = getContrastColor(activityBarBg, 4.5);
-
-  const accentContrast = ensureContrastRatio(accent, editorBg, 3.0);
-  const secondaryContrast = ensureContrastRatio(secondary, editorBg, 4.5);
-  const tertiaryContrast = ensureContrastRatio(tertiary, editorBg, 4.5);
-
-  const accentSyntax = ensureContrastRatio(
-    adjustSaturation(accent, syntaxSaturation),
-    editorBg,
-    3.0,
-  );
-  const secondarySyntax = ensureContrastRatio(
-    adjustSaturation(secondary, syntaxSaturation),
-    editorBg,
-    4.5,
-  );
-  const tertiarySyntax = ensureContrastRatio(
-    adjustSaturation(tertiary, syntaxSaturation),
-    editorBg,
-    4.5,
-  );
-
-  const workbenchColors: Record<string, string> = {
-    // Editor
-    "editor.background": editorBg,
-    "editor.foreground": fg,
-    "editor.lineHighlightBackground": adjustBrightness(
-      editorBg,
-      type === "dark" ? 5 : -5,
-    ),
-    "editor.selectionBackground": accentContrast + "44",
-    "editor.wordHighlightBackground": accentContrast + "22",
-    "editorCursor.foreground": accentContrast,
-    "editorWhitespace.foreground": adjustBrightness(
-      editorBg,
-      type === "dark" ? 10 : -10,
-    ),
-    "editorLineNumber.foreground": adjustBrightness(
-      fg,
-      type === "dark" ? -30 : 30,
-    ),
-    "editorLineNumber.activeForeground": fg,
-
-    // Sidebar
-    "sideBar.background": sidebarBg,
-    "sideBar.foreground": sidebarFg,
-    "sideBarTitle.foreground": ensureContrastRatio(accent, sidebarBg, 4.5),
-
-    // Activity Bar
-    "activityBar.background": activityBarBg,
-    "activityBar.foreground": activityBarFg,
-    "activityBar.activeBorder": accentContrast,
-    "activityBarBadge.background": accent,
-    "activityBarBadge.foreground": getContrastColor(accent, 4.5),
-
-    // Title Bar
-    "titleBar.activeBackground": activityBarBg,
-    "titleBar.activeForeground": activityBarFg,
-    "titleBar.inactiveBackground": adjustBrightness(
-      activityBarBg,
-      type === "dark" ? -5 : 5,
-    ),
-    "titleBar.inactiveForeground": activityBarFg + "99",
-
-    // Status Bar
-    "statusBar.background": accent,
-    "statusBar.foreground": getContrastColor(accent, 4.5),
-    "statusBar.debuggingBackground": secondary,
-    "statusBar.debuggingForeground": getContrastColor(secondary, 4.5),
-    "statusBar.noFolderBackground": adjustBrightness(base, -10),
-    "statusBar.noFolderForeground": getContrastColor(
-      adjustBrightness(base, -10),
-      4.5,
-    ),
-
-    // Tabs
-    "tab.activeBackground": editorBg,
-    "tab.activeForeground": fg,
-    "tab.inactiveBackground": sidebarBg,
-    "tab.inactiveForeground": sidebarFg + "88",
-    "tab.activeBorder": accentContrast,
-
-    // Terminal
-    "terminal.background": editorBg,
-    "terminal.foreground": fg,
-    "terminalCursor.foreground": accentContrast,
-
-    // Input
-    "input.background": adjustBrightness(editorBg, type === "dark" ? 5 : -5),
-    "input.foreground": fg,
-    "input.border": accentContrast + "66",
-    focusBorder: accentContrast,
-
-    // Button
-    "button.background": accent,
-    "button.foreground": getContrastColor(accent, 4.5),
-    "button.hoverBackground": adjustBrightness(
-      accent,
-      type === "dark" ? 10 : -10,
-    ),
-
-    // Lists
-    "list.activeSelectionBackground": accentContrast + "44",
-    "list.activeSelectionForeground": fg,
-    "list.hoverBackground": adjustBrightness(
-      sidebarBg,
-      type === "dark" ? 5 : -5,
-    ),
-    "list.hoverForeground": sidebarFg,
-    "list.inactiveSelectionBackground": accentContrast + "22",
-    "list.inactiveSelectionForeground": fg,
-    "list.focusBackground": accentContrast + "33",
-    "list.focusForeground": fg,
-
-    // Dropdown
-    "dropdown.background": adjustBrightness(editorBg, type === "dark" ? 8 : -8),
-    "dropdown.foreground": fg,
-    "dropdown.border": accentContrast + "66",
-    "dropdown.listBackground": adjustBrightness(
-      sidebarBg,
-      type === "dark" ? 5 : -5,
-    ),
-
-    // Checkbox
-    "checkbox.background": adjustBrightness(editorBg, type === "dark" ? 8 : -8),
-    "checkbox.foreground": fg,
-    "checkbox.border": accentContrast + "66",
-
-    // Input Validation
-    "inputValidation.errorBackground": type === "dark" ? "#5a1d1d" : "#f2dede",
-    "inputValidation.errorBorder": "#be1100",
-    "inputValidation.warningBackground":
-      type === "dark" ? "#5b5418" : "#f6f5d2",
-    "inputValidation.warningBorder": "#b89500",
-    "inputValidation.infoBackground": type === "dark" ? "#1e3a5f" : "#d6ecf2",
-    "inputValidation.infoBorder": "#4ba3ce",
-
-    // Panel (Terminal, Output, Problems, Debug Console)
-    "panel.background": editorBg,
-    "panel.border": adjustBrightness(editorBg, type === "dark" ? 10 : -10),
-    "panelTitle.activeBorder": accentContrast,
-    "panelTitle.activeForeground": fg,
-    "panelTitle.inactiveForeground": adjustBrightness(
-      fg,
-      type === "dark" ? -30 : 30,
-    ),
-
-    // Terminal ANSI Colors
-    "terminal.ansiBlack": type === "dark" ? "#000000" : "#000000",
-    "terminal.ansiRed": ensureContrastRatio("#cd3131", editorBg, 3.0),
-    "terminal.ansiGreen": ensureContrastRatio("#0dbc79", editorBg, 3.0),
-    "terminal.ansiYellow": ensureContrastRatio("#e5e510", editorBg, 3.0),
-    "terminal.ansiBlue": ensureContrastRatio("#2472c8", editorBg, 3.0),
-    "terminal.ansiMagenta": ensureContrastRatio("#bc3fbc", editorBg, 3.0),
-    "terminal.ansiCyan": ensureContrastRatio("#11a8cd", editorBg, 3.0),
-    "terminal.ansiWhite": type === "dark" ? "#e5e5e5" : "#555555",
-    "terminal.ansiBrightBlack": type === "dark" ? "#666666" : "#666666",
-    "terminal.ansiBrightRed": ensureContrastRatio("#f14c4c", editorBg, 3.0),
-    "terminal.ansiBrightGreen": ensureContrastRatio("#23d18b", editorBg, 3.0),
-    "terminal.ansiBrightYellow": ensureContrastRatio("#f5f543", editorBg, 3.0),
-    "terminal.ansiBrightBlue": ensureContrastRatio("#3b8eea", editorBg, 3.0),
-    "terminal.ansiBrightMagenta": ensureContrastRatio("#d670d6", editorBg, 3.0),
-    "terminal.ansiBrightCyan": ensureContrastRatio("#29b8db", editorBg, 3.0),
-    "terminal.ansiBrightWhite": type === "dark" ? "#e5e5e5" : "#a5a5a5",
-    "terminal.selectionBackground": accentContrast + "44",
-
-    // Badge
-    "badge.background": accent,
-    "badge.foreground": getContrastColor(accent, 4.5),
-
-    // Scrollbar
-    "scrollbar.shadow": type === "dark" ? "#00000088" : "#00000044",
-    "scrollbarSlider.background":
-      adjustBrightness(editorBg, type === "dark" ? 20 : -20) + "44",
-    "scrollbarSlider.hoverBackground":
-      adjustBrightness(editorBg, type === "dark" ? 25 : -25) + "66",
-    "scrollbarSlider.activeBackground":
-      adjustBrightness(editorBg, type === "dark" ? 30 : -30) + "88",
-
-    // Breadcrumbs
-    "breadcrumb.foreground": adjustBrightness(fg, type === "dark" ? -20 : 20),
-    "breadcrumb.focusForeground": fg,
-    "breadcrumb.activeSelectionForeground": accentContrast,
-    "breadcrumbPicker.background": sidebarBg,
-
-    // Editor Widget
-    "editorWidget.background": sidebarBg,
-    "editorWidget.foreground": sidebarFg,
-    "editorWidget.border": accentContrast + "66",
-    "editorSuggestWidget.background": sidebarBg,
-    "editorSuggestWidget.foreground": sidebarFg,
-    "editorSuggestWidget.selectedBackground": accentContrast + "44",
-    "editorSuggestWidget.highlightForeground": accentContrast,
-    "editorHoverWidget.background": sidebarBg,
-    "editorHoverWidget.foreground": sidebarFg,
-    "editorHoverWidget.border": accentContrast + "44",
-
-    // Peek View
-    "peekView.border": accentContrast,
-    "peekViewEditor.background": adjustBrightness(
-      editorBg,
-      type === "dark" ? -5 : 5,
-    ),
-    "peekViewResult.background": sidebarBg,
-    "peekViewResult.selectionBackground": accentContrast + "44",
-    "peekViewTitle.background": activityBarBg,
-    "peekViewTitleLabel.foreground": activityBarFg,
-
-    // Notifications
-    "notificationCenter.border": accentContrast + "66",
-    "notificationCenterHeader.background": activityBarBg,
-    "notificationCenterHeader.foreground": activityBarFg,
-    "notifications.background": sidebarBg,
-    "notifications.foreground": sidebarFg,
-    "notifications.border": accentContrast + "66",
-    "notificationLink.foreground": accentContrast,
-
-    // Menu
-    "menu.background": sidebarBg,
-    "menu.foreground": sidebarFg,
-    "menu.selectionBackground": accentContrast + "44",
-    "menu.selectionForeground": fg,
-    "menu.separatorBackground": adjustBrightness(
-      sidebarBg,
-      type === "dark" ? 10 : -10,
-    ),
-
-    // Settings Editor
-    "settings.headerForeground": fg,
-    "settings.modifiedItemIndicator": accentContrast,
-    "settings.dropdownBackground": adjustBrightness(
-      editorBg,
-      type === "dark" ? 8 : -8,
-    ),
-    "settings.dropdownForeground": fg,
-    "settings.dropdownBorder": accentContrast + "66",
-    "settings.dropdownListBorder": accentContrast + "66",
-    "settings.checkboxBackground": adjustBrightness(
-      editorBg,
-      type === "dark" ? 8 : -8,
-    ),
-    "settings.checkboxForeground": fg,
-    "settings.checkboxBorder": accentContrast + "66",
-    "settings.textInputBackground": adjustBrightness(
-      editorBg,
-      type === "dark" ? 5 : -5,
-    ),
-    "settings.textInputForeground": fg,
-    "settings.textInputBorder": accentContrast + "66",
-    "settings.numberInputBackground": adjustBrightness(
-      editorBg,
-      type === "dark" ? 5 : -5,
-    ),
-    "settings.numberInputForeground": fg,
-    "settings.numberInputBorder": accentContrast + "66",
-
-    // Git Decorations
-    "gitDecoration.addedResourceForeground": ensureContrastRatio(
-      "#81b88b",
-      sidebarBg,
-      3.0,
-    ),
-    "gitDecoration.modifiedResourceForeground": ensureContrastRatio(
-      "#e2c08d",
-      sidebarBg,
-      3.0,
-    ),
-    "gitDecoration.deletedResourceForeground": ensureContrastRatio(
-      "#c74e39",
-      sidebarBg,
-      3.0,
-    ),
-    "gitDecoration.untrackedResourceForeground": ensureContrastRatio(
-      "#73c991",
-      sidebarBg,
-      3.0,
-    ),
-    "gitDecoration.ignoredResourceForeground": adjustBrightness(
-      sidebarFg,
-      type === "dark" ? -30 : 30,
-    ),
-    "gitDecoration.conflictingResourceForeground": ensureContrastRatio(
-      "#e4676b",
-      sidebarBg,
-      3.0,
-    ),
-
-    // Diff Editor
-    "diffEditor.insertedTextBackground":
-      type === "dark" ? "#9bb95533" : "#9bb95544",
-    "diffEditor.removedTextBackground":
-      type === "dark" ? "#ff000033" : "#ff000044",
-    "diffEditor.border": adjustBrightness(editorBg, type === "dark" ? 10 : -10),
-
-    // Merge Conflicts
-    "merge.currentHeaderBackground": type === "dark" ? "#367366" : "#c2e0c6",
-    "merge.currentContentBackground":
-      type === "dark" ? "#36736633" : "#c2e0c666",
-    "merge.incomingHeaderBackground": type === "dark" ? "#395f8f" : "#b3d7f9",
-    "merge.incomingContentBackground":
-      type === "dark" ? "#395f8f33" : "#b3d7f966",
-
-    // Progress Bar
-    "progressBar.background": accentContrast,
-
-    // Editor Gutter
-    "editorGutter.background": editorBg,
-    "editorGutter.modifiedBackground": ensureContrastRatio(
-      "#e2c08d",
-      editorBg,
-      3.0,
-    ),
-    "editorGutter.addedBackground": ensureContrastRatio(
-      "#81b88b",
-      editorBg,
-      3.0,
-    ),
-    "editorGutter.deletedBackground": ensureContrastRatio(
-      "#c74e39",
-      editorBg,
-      3.0,
-    ),
-
-    // Quick Input (Command Palette)
-    "quickInput.background": sidebarBg,
-    "quickInput.foreground": sidebarFg,
-    "quickInputList.focusBackground": accentContrast + "44",
-    "quickInputList.focusForeground": fg,
-
-    // Extension Badge
-    "extensionBadge.remoteBackground": accent,
-    "extensionBadge.remoteForeground": getContrastColor(accent, 4.5),
-
-    // Debug
-    "debugToolBar.background": activityBarBg,
-    "debugToolBar.border": accentContrast + "44",
-
-    // Tree View (Listas de acordeón)
-    "sideBarSectionHeader.background": adjustBrightness(
-      sidebarBg,
-      type === "dark" ? 8 : -8,
-    ),
-    "sideBarSectionHeader.foreground": sidebarFg,
-    "sideBarSectionHeader.border": adjustBrightness(
-      sidebarBg,
-      type === "dark" ? 15 : -15,
-    ),
-
-    // List Filter Widget
-    "listFilterWidget.background": adjustBrightness(
-      sidebarBg,
-      type === "dark" ? 15 : -15,
-    ),
-    "listFilterWidget.outline": accentContrast,
-    "listFilterWidget.noMatchesOutline": ensureContrastRatio(
-      "#c74e39",
-      sidebarBg,
-      3.0,
-    ),
-
-    // Tree Indent Guides
-    "tree.indentGuidesStroke": adjustBrightness(
-      sidebarBg,
-      type === "dark" ? 20 : -20,
-    ),
-
-    // Extension Button
-    "extensionButton.prominentBackground": accent,
-    "extensionButton.prominentForeground": getContrastColor(accent, 4.5),
-    "extensionButton.prominentHoverBackground": adjustBrightness(
-      accent,
-      type === "dark" ? 10 : -10,
-    ),
-
-    // Welcome Page
-    "welcomePage.background": editorBg,
-    "welcomePage.buttonBackground": adjustBrightness(
-      editorBg,
-      type === "dark" ? 10 : -10,
-    ),
-    "welcomePage.buttonHoverBackground": adjustBrightness(
-      editorBg,
-      type === "dark" ? 15 : -15,
-    ),
-    "walkThrough.embeddedEditorBackground": adjustBrightness(
-      editorBg,
-      type === "dark" ? -5 : 5,
-    ),
-
-    // Symbol Icons
-    "symbolIcon.arrayForeground": tertiaryContrast,
-    "symbolIcon.booleanForeground": tertiaryContrast,
-    "symbolIcon.classForeground": secondaryContrast,
-    "symbolIcon.colorForeground": tertiaryContrast,
-    "symbolIcon.constantForeground": tertiaryContrast,
-    "symbolIcon.constructorForeground": accentContrast,
-    "symbolIcon.enumeratorForeground": secondaryContrast,
-    "symbolIcon.enumeratorMemberForeground": tertiaryContrast,
-    "symbolIcon.eventForeground": secondaryContrast,
-    "symbolIcon.fieldForeground": tertiaryContrast,
-    "symbolIcon.fileForeground": sidebarFg,
-    "symbolIcon.folderForeground": sidebarFg,
-    "symbolIcon.functionForeground": accentContrast,
-    "symbolIcon.interfaceForeground": secondaryContrast,
-    "symbolIcon.keyForeground": tertiaryContrast,
-    "symbolIcon.keywordForeground": accentContrast,
-    "symbolIcon.methodForeground": accentContrast,
-    "symbolIcon.moduleForeground": secondaryContrast,
-    "symbolIcon.namespaceForeground": secondaryContrast,
-    "symbolIcon.nullForeground": tertiaryContrast,
-    "symbolIcon.numberForeground": tertiaryContrast,
-    "symbolIcon.objectForeground": secondaryContrast,
-    "symbolIcon.operatorForeground": accentContrast,
-    "symbolIcon.packageForeground": secondaryContrast,
-    "symbolIcon.propertyForeground": tertiaryContrast,
-    "symbolIcon.referenceForeground": tertiaryContrast,
-    "symbolIcon.snippetForeground": fg,
-    "symbolIcon.stringForeground": secondaryContrast,
-    "symbolIcon.structForeground": secondaryContrast,
-    "symbolIcon.textForeground": fg,
-    "symbolIcon.typeParameterForeground": secondaryContrast,
-    "symbolIcon.unitForeground": tertiaryContrast,
-    "symbolIcon.variableForeground": tertiaryContrast,
-
-    // Editor Error/Warning/Info Squiggles
-    "editorError.foreground": ensureContrastRatio("#f48771", editorBg, 3.0),
-    "editorError.border": type === "dark" ? "#ffffff00" : "#00000000",
-    "editorWarning.foreground": ensureContrastRatio("#cca700", editorBg, 3.0),
-    "editorWarning.border": type === "dark" ? "#ffffff00" : "#00000000",
-    "editorInfo.foreground": ensureContrastRatio("#75beff", editorBg, 3.0),
-    "editorInfo.border": type === "dark" ? "#ffffff00" : "#00000000",
-    "editorHint.foreground": adjustBrightness(fg, type === "dark" ? -20 : 20),
-
-    // Editor Bracket Matching
-    "editorBracketMatch.background": accentContrast + "22",
-    "editorBracketMatch.border": accentContrast,
-
-    // Editor Overview Ruler
-    "editorOverviewRuler.border": adjustBrightness(
-      editorBg,
-      type === "dark" ? 10 : -10,
-    ),
-    "editorOverviewRuler.currentContentForeground": ensureContrastRatio(
-      "#367366",
-      editorBg,
-      2.0,
-    ),
-    "editorOverviewRuler.incomingContentForeground": ensureContrastRatio(
-      "#395f8f",
-      editorBg,
-      2.0,
-    ),
-    "editorOverviewRuler.findMatchForeground": accentContrast + "88",
-    "editorOverviewRuler.rangeHighlightForeground": accentContrast + "66",
-    "editorOverviewRuler.selectionHighlightForeground": accentContrast + "44",
-    "editorOverviewRuler.wordHighlightForeground": accentContrast + "44",
-    "editorOverviewRuler.wordHighlightStrongForeground": accentContrast + "66",
-    "editorOverviewRuler.modifiedForeground": ensureContrastRatio(
-      "#e2c08d",
-      editorBg,
-      2.0,
-    ),
-    "editorOverviewRuler.addedForeground": ensureContrastRatio(
-      "#81b88b",
-      editorBg,
-      2.0,
-    ),
-    "editorOverviewRuler.deletedForeground": ensureContrastRatio(
-      "#c74e39",
-      editorBg,
-      2.0,
-    ),
-    "editorOverviewRuler.errorForeground": ensureContrastRatio(
-      "#f48771",
-      editorBg,
-      2.0,
-    ),
-    "editorOverviewRuler.warningForeground": ensureContrastRatio(
-      "#cca700",
-      editorBg,
-      2.0,
-    ),
-    "editorOverviewRuler.infoForeground": ensureContrastRatio(
-      "#75beff",
-      editorBg,
-      2.0,
-    ),
-    "editorOverviewRuler.bracketMatchForeground": accentContrast + "88",
-
-    // Editor Indentation Guides
-    "editorIndentGuide.background": adjustBrightness(
-      editorBg,
-      type === "dark" ? 15 : -15,
-    ),
-    "editorIndentGuide.activeBackground": adjustBrightness(
-      editorBg,
-      type === "dark" ? 25 : -25,
-    ),
-
-    // Editor Rulers
-    "editorRuler.foreground": adjustBrightness(
-      editorBg,
-      type === "dark" ? 15 : -15,
-    ),
-
-    // Editor Code Lens
-    "editorCodeLens.foreground": adjustBrightness(
-      fg,
-      type === "dark" ? -30 : 30,
-    ),
-
-    // Editor Link
-    "editorLink.activeForeground": accentContrast,
-
-    // Editor Range Highlight
-    "editor.rangeHighlightBackground": accentContrast + "11",
-    "editor.rangeHighlightBorder": type === "dark" ? "#ffffff00" : "#00000000",
-
-    // Editor Selection Highlight
-    "editor.selectionHighlightBackground": accentContrast + "22",
-    "editor.selectionHighlightBorder":
-      type === "dark" ? "#ffffff00" : "#00000000",
-
-    // Editor Word Highlight
-    "editor.wordHighlightStrongBackground": accentContrast + "33",
-    "editor.wordHighlightStrongBorder":
-      type === "dark" ? "#ffffff00" : "#00000000",
-
-    // Editor Find Match
-    "editor.findMatchBackground": accentContrast + "66",
-    "editor.findMatchHighlightBackground": accentContrast + "33",
-    "editor.findMatchBorder": accentContrast,
-    "editor.findMatchHighlightBorder":
-      type === "dark" ? "#ffffff00" : "#00000000",
-    "editor.findRangeHighlightBackground": accentContrast + "22",
-    "editor.findRangeHighlightBorder":
-      type === "dark" ? "#ffffff00" : "#00000000",
-
-    // Editor Find Widget
-    "editorWidget.resizeBorder": accentContrast,
-    "editorFindWidget.background": sidebarBg,
-    "editorFindWidget.border": accentContrast + "66",
-
-    // Minimap
-    "minimap.findMatchHighlight": accentContrast + "88",
-    "minimap.selectionHighlight": accentContrast + "66",
-    "minimap.errorHighlight":
-      ensureContrastRatio("#f48771", editorBg, 2.0) + "88",
-    "minimap.warningHighlight":
-      ensureContrastRatio("#cca700", editorBg, 2.0) + "88",
-    "minimapSlider.background":
-      adjustBrightness(editorBg, type === "dark" ? 20 : -20) + "44",
-    "minimapSlider.hoverBackground":
-      adjustBrightness(editorBg, type === "dark" ? 25 : -25) + "66",
-    "minimapSlider.activeBackground":
-      adjustBrightness(editorBg, type === "dark" ? 30 : -30) + "88",
-    "minimapGutter.addedBackground": ensureContrastRatio(
-      "#81b88b",
-      editorBg,
-      2.0,
-    ),
-    "minimapGutter.modifiedBackground": ensureContrastRatio(
-      "#e2c08d",
-      editorBg,
-      2.0,
-    ),
-    "minimapGutter.deletedBackground": ensureContrastRatio(
-      "#c74e39",
-      editorBg,
-      2.0,
-    ),
-
-    // Editor Markers (Breakpoints, etc)
-    "editorMarkerNavigation.background": sidebarBg,
-    "editorMarkerNavigationError.background": ensureContrastRatio(
-      "#f48771",
-      sidebarBg,
-      3.0,
-    ),
-    "editorMarkerNavigationWarning.background": ensureContrastRatio(
-      "#cca700",
-      sidebarBg,
-      3.0,
-    ),
-    "editorMarkerNavigationInfo.background": ensureContrastRatio(
-      "#75beff",
-      sidebarBg,
-      3.0,
-    ),
-
-    // Inlay Hints
-    "editorInlayHint.background":
-      adjustBrightness(editorBg, type === "dark" ? 10 : -10) + "cc",
-    "editorInlayHint.foreground": adjustBrightness(
-      fg,
-      type === "dark" ? -20 : 20,
-    ),
-    "editorInlayHint.typeBackground":
-      adjustBrightness(editorBg, type === "dark" ? 10 : -10) + "cc",
-    "editorInlayHint.typeForeground": adjustBrightness(
-      fg,
-      type === "dark" ? -20 : 20,
-    ),
-    "editorInlayHint.parameterBackground":
-      adjustBrightness(editorBg, type === "dark" ? 10 : -10) + "cc",
-    "editorInlayHint.parameterForeground": adjustBrightness(
-      fg,
-      type === "dark" ? -20 : 20,
-    ),
-
-    // Ghost Text (Suggestions)
-    "editorGhostText.foreground": adjustBrightness(
-      fg,
-      type === "dark" ? -40 : 40,
-    ),
-    "editorGhostText.border": type === "dark" ? "#ffffff00" : "#00000000",
-
-    // Sticky Scroll
-    "editorStickyScroll.background": editorBg,
-    "editorStickyScrollHover.background": adjustBrightness(
-      editorBg,
-      type === "dark" ? 5 : -5,
-    ),
-
-    // Search Editor
-    "searchEditor.findMatchBackground": accentContrast + "44",
-    "searchEditor.findMatchBorder": accentContrast + "88",
-    "searchEditor.textInputBorder": accentContrast + "66",
-
-    // Chart Colors (Testing, Performance, etc)
-    "charts.foreground": fg,
-    "charts.lines": adjustBrightness(editorBg, type === "dark" ? 20 : -20),
-    "charts.red": ensureContrastRatio("#f48771", editorBg, 3.0),
-    "charts.blue": ensureContrastRatio("#75beff", editorBg, 3.0),
-    "charts.yellow": ensureContrastRatio("#cca700", editorBg, 3.0),
-    "charts.orange": ensureContrastRatio("#d18616", editorBg, 3.0),
-    "charts.green": ensureContrastRatio("#89d185", editorBg, 3.0),
-    "charts.purple": ensureContrastRatio("#b180d7", editorBg, 3.0),
-
-    // Testing
-    "testing.iconFailed": ensureContrastRatio("#f48771", sidebarBg, 3.0),
-    "testing.iconErrored": ensureContrastRatio("#f48771", sidebarBg, 3.0),
-    "testing.iconPassed": ensureContrastRatio("#89d185", sidebarBg, 3.0),
-    "testing.runAction": accentContrast,
-    "testing.iconQueued": ensureContrastRatio("#cca700", sidebarBg, 3.0),
-    "testing.iconUnset": adjustBrightness(
-      sidebarFg,
-      type === "dark" ? -20 : 20,
-    ),
-    "testing.iconSkipped": adjustBrightness(
-      sidebarFg,
-      type === "dark" ? -20 : 20,
-    ),
-
-    // Problems Panel
-    "problemsErrorIcon.foreground": ensureContrastRatio(
-      "#f48771",
-      sidebarBg,
-      3.0,
-    ),
-    "problemsWarningIcon.foreground": ensureContrastRatio(
-      "#cca700",
-      sidebarBg,
-      3.0,
-    ),
-    "problemsInfoIcon.foreground": ensureContrastRatio(
-      "#75beff",
-      sidebarBg,
-      3.0,
-    ),
-
-    // Status Bar Items
-    "statusBarItem.activeBackground": adjustBrightness(
-      accent,
-      type === "dark" ? -15 : 15,
-    ),
-    "statusBarItem.hoverBackground": adjustBrightness(
-      accent,
-      type === "dark" ? -10 : 10,
-    ),
-    "statusBarItem.prominentBackground": secondary,
-    "statusBarItem.prominentForeground": getContrastColor(secondary, 4.5),
-    "statusBarItem.prominentHoverBackground": adjustBrightness(
-      secondary,
-      type === "dark" ? 10 : -10,
-    ),
-    "statusBarItem.remoteBackground": accent,
-    "statusBarItem.remoteForeground": getContrastColor(accent, 4.5),
-    "statusBarItem.errorBackground": ensureContrastRatio(
-      "#c74e39",
-      editorBg,
-      3.0,
-    ),
-    "statusBarItem.errorForeground": getContrastColor("#c74e39", 4.5),
-    "statusBarItem.warningBackground": ensureContrastRatio(
-      "#cca700",
-      editorBg,
-      3.0,
-    ),
-    "statusBarItem.warningForeground": getContrastColor("#cca700", 4.5),
-
-    // Tab Additional
-    "tab.border": adjustBrightness(editorBg, type === "dark" ? 10 : -10),
-    "tab.unfocusedActiveBorder": accentContrast + "88",
-    "tab.unfocusedActiveBackground": editorBg,
-    "tab.unfocusedActiveForeground": adjustBrightness(
-      fg,
-      type === "dark" ? -20 : 20,
-    ),
-    "tab.unfocusedInactiveBackground": sidebarBg,
-    "tab.unfocusedInactiveForeground": sidebarFg + "88",
-    "tab.hoverBackground": adjustBrightness(editorBg, type === "dark" ? 5 : -5),
-    "tab.hoverBorder": accentContrast + "66",
-    "tab.lastPinnedBorder": adjustBrightness(
-      sidebarBg,
-      type === "dark" ? 15 : -15,
-    ),
-
-    // Editor Group
-    "editorGroup.border": adjustBrightness(
-      editorBg,
-      type === "dark" ? 10 : -10,
-    ),
-    "editorGroup.dropBackground": accentContrast + "22",
-    "editorGroupHeader.tabsBackground": sidebarBg,
-    "editorGroupHeader.noTabsBackground": editorBg,
-    "editorGroupHeader.border": adjustBrightness(
-      editorBg,
-      type === "dark" ? 10 : -10,
-    ),
-
-    // Side by Side Editor
-    "sideBySideEditor.horizontalBorder": adjustBrightness(
-      editorBg,
-      type === "dark" ? 10 : -10,
-    ),
-    "sideBySideEditor.verticalBorder": adjustBrightness(
-      editorBg,
-      type === "dark" ? 10 : -10,
-    ),
-
-    // Interactive Editor (Notebooks)
-    "interactive.activeCodeBorder": accentContrast,
-    "interactive.inactiveCodeBorder": adjustBrightness(
-      editorBg,
-      type === "dark" ? 10 : -10,
-    ),
-
-    // Notebook
-    "notebook.cellBorderColor": adjustBrightness(
-      editorBg,
-      type === "dark" ? 10 : -10,
-    ),
-    "notebook.focusedCellBorder": accentContrast,
-    "notebook.cellStatusBarItemHoverBackground": adjustBrightness(
-      editorBg,
-      type === "dark" ? 10 : -10,
-    ),
-    "notebook.cellInsertionIndicator": accentContrast,
-    "notebook.cellToolbarSeparator": adjustBrightness(
-      editorBg,
-      type === "dark" ? 15 : -15,
-    ),
-    "notebook.selectedCellBackground": adjustBrightness(
-      editorBg,
-      type === "dark" ? 5 : -5,
-    ),
-    "notebookStatusSuccessIcon.foreground": ensureContrastRatio(
-      "#89d185",
-      editorBg,
-      3.0,
-    ),
-    "notebookStatusErrorIcon.foreground": ensureContrastRatio(
-      "#f48771",
-      editorBg,
-      3.0,
-    ),
-    "notebookStatusRunningIcon.foreground": accentContrast,
-
-    // Keybinding Label
-    "keybindingLabel.background": adjustBrightness(
-      editorBg,
-      type === "dark" ? 10 : -10,
-    ),
-    "keybindingLabel.foreground": fg,
-    "keybindingLabel.border": adjustBrightness(
-      editorBg,
-      type === "dark" ? 20 : -20,
-    ),
-    "keybindingLabel.bottomBorder": adjustBrightness(
-      editorBg,
-      type === "dark" ? 25 : -25,
-    ),
-  };
-
-  // Apply manual overrides if they exist
-  if (palette.overrides) {
-    Object.entries(palette.overrides).forEach(([key, color]) => {
-      workbenchColors[key] = color;
-    });
-  }
-
-  // Colores de sintaxis con contraste garantizado
-  const commentColor =
-    type === "dark"
-      ? ensureContrastRatio(adjustBrightness(fg, -30), editorBg, 3.0, false)
-      : ensureContrastRatio(adjustBrightness(fg, 30), editorBg, 3.0, false);
-
-  // Derived syntax colors
-  const bracketColor = ensureContrastRatio(
-    adjustBrightness(fg, type === "dark" ? -20 : 20), editorBg, 3.0
-  );
-  const paramColor = ensureContrastRatio(
-    adjustSaturation(tertiary, syntaxSaturation * 0.9), editorBg, 4.0
-  );
-  const propColor = ensureContrastRatio(
-    adjustSaturation(secondary, syntaxSaturation * 0.85), editorBg, 4.0
-  );
-  const decoratorColor = ensureContrastRatio(
-    adjustSaturation(accent, syntaxSaturation * 1.1), editorBg, 3.5
-  );
-  const regexColor = ensureContrastRatio(
-    adjustSaturation(secondary, syntaxSaturation * 1.15), editorBg, 3.5
-  );
-  const langConstColor = ensureContrastRatio(
-    adjustSaturation(tertiary, syntaxSaturation * 1.1), editorBg, 4.0
-  );
-
-  const tokenColors: TokenColor[] = [
-    // ── Core ──────────────────────────────────────────────────────────────
-    {
-      name: "Comments",
-      scope: ["comment", "punctuation.definition.comment"],
-      settings: { foreground: commentColor, fontStyle: "italic" },
-    },
-    {
-      name: "Keywords",
-      scope: ["keyword", "storage.type", "storage.modifier"],
-      settings: { foreground: accentSyntax },
-    },
-    {
-      name: "Control Flow",
-      scope: [
-        "keyword.control", "keyword.control.flow",
-        "keyword.control.import", "keyword.control.export",
-        "keyword.control.from", "keyword.control.as",
-      ],
-      settings: { foreground: accentSyntax },
-    },
-    {
-      name: "Strings",
-      scope: ["string", "string.quoted"],
-      settings: { foreground: secondarySyntax },
-    },
-    {
-      name: "Template Literals",
-      scope: ["string.template", "template.expression"],
-      settings: { foreground: secondarySyntax },
-    },
-    {
-      name: "Template Expression Punctuation",
-      scope: [
-        "punctuation.definition.template-expression.begin",
-        "punctuation.definition.template-expression.end",
-      ],
-      settings: { foreground: ensureContrastRatio(accentSyntax, editorBg, 3.5) },
-    },
-    {
-      name: "Numbers",
-      scope: ["constant.numeric"],
-      settings: { foreground: tertiarySyntax },
-    },
-    {
-      name: "Language Constants (true/false/null/undefined)",
-      scope: [
-        "constant.language", "constant.language.boolean",
-        "constant.language.null", "constant.language.undefined",
-      ],
-      settings: { foreground: langConstColor },
-    },
-    {
-      name: "Escape Characters",
-      scope: ["constant.character.escape"],
-      settings: { foreground: tertiarySyntax },
-    },
-    // ── Functions ─────────────────────────────────────────────────────────
-    {
-      name: "Function Declarations",
-      scope: ["entity.name.function", "support.function"],
-      settings: { foreground: accentSyntax },
-    },
-    {
-      name: "Function Calls",
-      scope: [
-        "variable.function",
-        "entity.name.function.call",
-        "meta.function-call entity.name.function",
-      ],
-      settings: { foreground: accentSyntax },
-    },
-    {
-      name: "Function Parameters",
-      scope: ["variable.parameter", "meta.function.parameter"],
-      settings: { foreground: paramColor, fontStyle: "italic" },
-    },
-    // ── Types & Classes ───────────────────────────────────────────────────
-    {
-      name: "Classes & Types",
-      scope: ["entity.name.type", "entity.name.class", "support.type"],
-      settings: { foreground: secondarySyntax },
-    },
-    {
-      name: "Interfaces & Type Parameters",
-      scope: [
-        "entity.name.type.interface", "entity.name.type.type-parameter",
-        "support.class", "meta.type.parameters",
-      ],
-      settings: { foreground: secondarySyntax, fontStyle: "italic" },
-    },
-    {
-      name: "Namespaces & Modules",
-      scope: [
-        "entity.name.namespace", "entity.name.module",
-        "support.module", "variable.other.module",
-      ],
-      settings: { foreground: secondarySyntax },
-    },
-    // ── Variables ─────────────────────────────────────────────────────────
-    {
-      name: "Variables",
-      scope: ["variable", "variable.other"],
-      settings: { foreground: fg },
-    },
-    {
-      name: "Constants",
-      scope: ["constant", "variable.other.constant"],
-      settings: { foreground: tertiarySyntax },
-    },
-    {
-      name: "Enum Members",
-      scope: ["variable.other.enummember", "constant.other.enum"],
-      settings: { foreground: tertiarySyntax },
-    },
-    {
-      name: "Object Properties",
-      scope: [
-        "support.variable.property",
-        "variable.other.property",
-        "meta.property-name",
-      ],
-      settings: { foreground: propColor },
-    },
-    {
-      name: "Object Keys",
-      scope: [
-        "support.type.property-name",
-        "meta.object-literal.key",
-        "string.unquoted.label",
-      ],
-      settings: { foreground: fg },
-    },
-    // ── Operators & Punctuation ───────────────────────────────────────────
-    {
-      name: "Operators",
-      scope: ["keyword.operator"],
-      settings: { foreground: ensureContrastRatio(accentSyntax, editorBg, 3.0) },
-    },
-    {
-      name: "Punctuation & Brackets",
-      scope: [
-        "punctuation", "meta.brace",
-        "punctuation.definition.block", "punctuation.section",
-        "meta.delimiter",
-      ],
-      settings: { foreground: bracketColor },
-    },
-    // ── Markup & Web ──────────────────────────────────────────────────────
-    {
-      name: "Tags (HTML/XML)",
-      scope: ["entity.name.tag"],
-      settings: { foreground: accentSyntax },
-    },
-    {
-      name: "Attributes",
-      scope: ["entity.other.attribute-name"],
-      settings: { foreground: secondarySyntax, fontStyle: "italic" },
-    },
-    {
-      name: "CSS Properties",
-      scope: ["support.type.property-name.css"],
-      settings: { foreground: secondarySyntax },
-    },
-    {
-      name: "JSX / TSX Components",
-      scope: [
-        "support.class.component",
-        "entity.name.tag.tsx",
-        "entity.name.tag.jsx",
-      ],
-      settings: { foreground: secondarySyntax },
-    },
-    // ── Decorators & Regex ────────────────────────────────────────────────
-    {
-      name: "Decorators & Annotations",
-      scope: [
-        "meta.decorator", "entity.name.function.decorator",
-        "punctuation.decorator", "storage.type.annotation",
-      ],
-      settings: { foreground: decoratorColor, fontStyle: "italic" },
-    },
-    {
-      name: "Regular Expressions",
-      scope: ["string.regexp", "constant.regexp", "keyword.other.regex"],
-      settings: { foreground: regexColor },
-    },
-    // ── Diagnostics ───────────────────────────────────────────────────────
-    {
-      name: "Invalid / Deprecated",
-      scope: ["invalid", "invalid.illegal", "invalid.deprecated"],
-      settings: { foreground: ensureContrastRatio("#f48771", editorBg, 3.5) },
-    },
-  ];
-
-  const themeDefinition: any = {
+  const colors = applyWorkbenchOverrides(getWorkbenchBaseColors(palette), palette);
+  const tokenColors = getTextMateRules(palette);
+  const semanticTokenColors = getSemanticTokenColors(palette);
+
+  return {
     name: themeName ?? `${palette.name} Theme`,
-    type,
-    colors: workbenchColors,
+    type: detectThemeTypeFromBase(palette.baseColor.hex),
+    colors,
     tokenColors,
+    semanticHighlighting: true,
+    semanticTokenColors,
+    _sourcePalette: palette,
   };
-
-  // Apply manual syntax overrides if they exist
-  if (palette.overrides) {
-    Object.entries(palette.overrides).forEach(([key, color]) => {
-      if (key.startsWith('syntax.')) {
-        const syntaxName = key.replace('syntax.', '').toLowerCase();
-        const token = tokenColors.find(t => t.name.toLowerCase().includes(syntaxName));
-        if (token) {
-          token.settings.foreground = color;
-        }
-      }
-    });
-  }
-
-  // Store original palette for perfect round-trip import/export
-  themeDefinition._sourcePalette = palette;
-
-  return themeDefinition;
 }
 
-// ── Export to file ──────────────────────────────────────────────────────────
+export function getEditableThemeColorState(
+  theme: ThemeDefinition,
+): EditableThemeColorState {
+  const textMate: Record<string, string> = {};
+  const semantic: Record<string, string> = {};
+
+  for (const item of TEXTMATE_EDITABLE_ITEMS) {
+    const token = theme.tokenColors.find((rule) => rule.name === item.id);
+    textMate[item.id] = token?.settings.foreground ?? "#000000";
+  }
+
+  for (const item of SEMANTIC_EDITABLE_ITEMS) {
+    semantic[item.id] = theme.semanticTokenColors[item.semanticSelector ?? item.id] ?? "#000000";
+  }
+
+  return {
+    workbench: WORKBENCH_EDITABLE_ITEMS.reduce<Record<string, string>>((accumulator, item) => {
+      accumulator[item.id] = theme.colors[item.id] ?? "#000000";
+      return accumulator;
+    }, {}),
+    textMate,
+    semantic,
+  };
+}
 
 export async function exportThemeToFile(
   theme: ThemeDefinition,
@@ -1141,7 +555,7 @@ export async function exportThemeToFile(
   const uri = await vscode.window.showSaveDialog({
     defaultUri: vscode.Uri.file(
       path.join(
-        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "",
+        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
         `${defaultName}-color-theme.json`,
       ),
     ),
@@ -1153,97 +567,91 @@ export async function exportThemeToFile(
     return undefined;
   }
 
-  const themeJson: any = {
+  const themeJson = {
     name: theme.name,
     type: theme.type,
     colors: theme.colors,
     tokenColors: theme.tokenColors,
+    semanticHighlighting: theme.semanticHighlighting,
+    semanticTokenColors: theme.semanticTokenColors,
+    _palette: theme._sourcePalette,
   };
 
-  // Include original palette data for perfect round-trip import/export
-  if ((theme as any)._sourcePalette) {
-    themeJson._palette = (theme as any)._sourcePalette;
-  }
-
-  fs.writeFileSync(uri.fsPath, JSON.stringify(themeJson, null, 2), "utf-8");
-  vscode.window.showInformationMessage(
-    `Theme exported: ${uri.fsPath}`,
-  );
+  fs.writeFileSync(uri.fsPath, JSON.stringify(themeJson, null, 2), "utf8");
+  vscode.window.showInformationMessage(`Theme exported: ${uri.fsPath}`);
   return uri.fsPath;
 }
 
-// ── Apply as preview ───────────────────────────────────────────────────────
-
 export async function applyThemePreview(theme: ThemeDefinition): Promise<void> {
-  const config = vscode.workspace.getConfiguration();
-  await config.update(
-    "workbench.colorCustomizations",
-    theme.colors,
+  const previewPath = getPreviewThemePath();
+  fs.mkdirSync(path.dirname(previewPath), { recursive: true });
+  fs.writeFileSync(
+    previewPath,
+    JSON.stringify(
+      {
+        name: PREVIEW_THEME_LABEL,
+        type: theme.type,
+        colors: theme.colors,
+        tokenColors: theme.tokenColors,
+        semanticHighlighting: theme.semanticHighlighting,
+        semanticTokenColors: theme.semanticTokenColors,
+      },
+      null,
+      2,
+    ),
+    "utf8",
+  );
+
+  const configuration = vscode.workspace.getConfiguration();
+  const activeTheme = configuration.get<string>("workbench.colorTheme");
+  if (!previousColorTheme && activeTheme !== PREVIEW_THEME_LABEL) {
+    previousColorTheme = activeTheme;
+  }
+  previousPreviewThemeType = theme.type;
+  await configuration.update(
+    "workbench.colorTheme",
+    PREVIEW_THEME_LABEL,
     vscode.ConfigurationTarget.Global,
   );
-  await config.update(
-    "editor.tokenColorCustomizations",
-    { textMateRules: theme.tokenColors },
-    vscode.ConfigurationTarget.Global,
-  );
-  vscode.window.showInformationMessage(`Theme preview applied: ${theme.name}`);
 }
 
 export async function clearThemePreview(): Promise<void> {
-  const config = vscode.workspace.getConfiguration();
-  await config.update(
-    "workbench.colorCustomizations",
-    undefined,
+  const configuration = vscode.workspace.getConfiguration();
+  const fallbackTheme =
+    previousPreviewThemeType === "light" ? DEFAULT_LIGHT_THEME : DEFAULT_DARK_THEME;
+  const nextTheme =
+    previousColorTheme && previousColorTheme !== PREVIEW_THEME_LABEL
+      ? previousColorTheme
+      : fallbackTheme;
+  await configuration.update(
+    "workbench.colorTheme",
+    nextTheme,
     vscode.ConfigurationTarget.Global,
   );
-  await config.update(
-    "editor.tokenColorCustomizations",
-    undefined,
-    vscode.ConfigurationTarget.Global,
-  );
-  vscode.window.showInformationMessage("Theme preview cleared.");
+  previousColorTheme = undefined;
 }
 
-// ── Import from file ────────────────────────────────────────────────────────
-
 export async function importThemeFromFile(): Promise<Palette | undefined> {
-  const uri = await vscode.window.showOpenDialog({
+  const selection = await vscode.window.showOpenDialog({
     filters: { "VS Code Theme": ["json"] },
     title: "Import Theme File",
     canSelectMany: false,
     openLabel: "Import",
   });
 
-  if (!uri || uri.length === 0) {
+  if (!selection?.length) {
     return undefined;
   }
 
   try {
-    const content = fs.readFileSync(uri[0].fsPath, "utf-8");
-    const themeData = JSON.parse(content);
-    const fileName = path.basename(uri[0].fsPath, path.extname(uri[0].fsPath));
-
-    // Validate theme structure
-    if (!themeData.colors && !themeData.tokenColors) {
-      throw new Error("Invalid theme file: missing colors or tokenColors");
-    }
-
-    if (themeData._palette) {
-      return {
-        ...themeData._palette,
-        id: `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        name: fileName, // Use filename as palette name
-        filePath: uri[0].fsPath,
-      };
-    }
-
-    // Otherwise, try to reconstruct the palette from theme colors
-    themeData.name = fileName;
-    const palette = convertThemeToPalette(themeData);
-    palette.filePath = uri[0].fsPath;
-    
-    vscode.window.showInformationMessage(`Theme imported: ${palette.name}`);
-    return palette;
+    const filePath = selection[0].fsPath;
+    const raw = fs.readFileSync(filePath, "utf8");
+    const themeData = JSON.parse(raw);
+    const palette = convertThemeToPalette(themeData, filePath);
+    return {
+      ...palette,
+      filePath,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     vscode.window.showErrorMessage(`Failed to import theme: ${message}`);
@@ -1251,212 +659,177 @@ export async function importThemeFromFile(): Promise<Palette | undefined> {
   }
 }
 
-/**
- * Convert a VS Code theme definition back to a Palette
- */
-export function convertThemeToPalette(themeData: any): Palette {
-  // If the theme was exported from this extension, it will have the original palette
-  if (themeData._palette) {
+export function convertThemeToPalette(themeData: any, filePath?: string): Palette {
+  if (themeData?._palette) {
     return {
       ...themeData._palette,
-      id: `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: themeData.name || themeData._palette.name,
-    };
+      id: themeData._palette.id ?? `imported-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      source: "imported",
+      filePath,
+    } satisfies Palette;
   }
 
-  // Otherwise, try to reconstruct the palette from theme colors
-  const colors = themeData.colors || {};
-  const name = themeData.name || "Imported Theme";
-  const type = themeData.type || detectTypeFromColors(colors);
+  const name = themeData?.name || "Imported Theme";
+  const colors = typeof themeData?.colors === "object" && themeData.colors ? themeData.colors : {};
+  const tokenColors = Array.isArray(themeData?.tokenColors) ? themeData.tokenColors : [];
+  const semanticTokenColors =
+    typeof themeData?.semanticTokenColors === "object" && themeData.semanticTokenColors
+      ? themeData.semanticTokenColors
+      : {};
 
-  // Extract key colors from the theme
-  const extractedColors = extractKeyColorsFromTheme(colors);
-
-  // Determine harmony type based on color relationships
-  const harmony = detectHarmonyType(extractedColors);
-
-  // Convert to ColorInfo format
-  const colorInfos = extractedColors.map((hex, index) => {
-    const rgb = hexToRgb(hex);
-    const hsl = rgbToHsl(rgb);
-    return {
-      hex,
-      rgb,
-      hsl,
-      name: `Color ${index + 1}`,
-    };
-  });
-
-  const baseColor = colorInfos[0];
-
-  // Reconstruct overrides by comparing imported colors with generated ones
-  // This is a simplified approach; ideally we'd generate the theme from the base color
-  // and compare, but for now we'll store all non-standard colors as overrides if needed.
-  // A better approach for "edit persistence" is to just trust the imported colors map.
-  const overrides = { ...colors }; 
+  const extracted = extractImportedSeedColors(colors);
+  const harmony = detectHarmonyType(extracted);
+  const baseColor = createColorInfo(
+    extracted[getImportedPrimaryIndex(extracted.length)] ?? extracted[0] ?? "#4a90d9",
+    "Base",
+  );
+  const regenerated = generatePalette(
+    baseColor.hex,
+    harmony,
+    name,
+    undefined,
+    "imported",
+    true,
+  );
+  const themeOverrides = {
+    workbench: collectWorkbenchOverrides(colors, regenerated),
+    textMate: collectTextMateOverrides(tokenColors, regenerated),
+    semantic: collectSemanticOverrides(semanticTokenColors, regenerated),
+  };
 
   return {
-    id: `imported-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    ...regenerated,
+    id: `imported-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name,
-    baseColor,
-    harmony,
-    colors: colorInfos,
-    createdAt: Date.now(),
-    overrides, // Store all imported colors as overrides to ensure fidelity
+    filePath,
+    themeOverrides,
   };
 }
 
-/**
- * Detect theme type from colors
- */
-function detectTypeFromColors(colors: Record<string, string>): ThemeType {
-  const editorBg = colors["editor.background"] || "#1e1e1e";
-  const hsl = hexToHsl(editorBg);
-  return hsl.l < 50 ? "dark" : "light";
-}
-
-/**
- * Extract key colors from theme to build palette
- */
-function extractKeyColorsFromTheme(colors: Record<string, string>): string[] {
-  const extracted: string[] = [];
-  const seen = new Set<string>();
-
-  // Priority order for color extraction
-  const priorityKeys = [
+function extractImportedSeedColors(colors: Record<string, string>): string[] {
+  const keys = [
+    "editor.background",
     "activityBar.background",
-    "titleBar.activeBackground",
-    "sideBar.background",
     "statusBar.background",
-    "activityBar.activeBorder",
-    "focusBorder",
     "button.background",
-    "editor.selectionBackground",
-    "list.activeSelectionBackground",
-    "editorCursor.foreground",
-    "sideBarTitle.foreground",
-    "activityBarBadge.background",
+    "focusBorder",
     "terminal.ansiBlue",
-    "terminal.ansiCyan",
     "terminal.ansiGreen",
     "terminal.ansiMagenta",
     "terminal.ansiYellow",
+    "editor.selectionBackground",
   ];
+  const seen = new Set<string>();
+  const result: string[] = [];
 
-  // Extract colors from priority keys
-  for (const key of priorityKeys) {
+  for (const key of keys) {
     const color = colors[key];
-    if (color && isValidHex(color)) {
-      const normalized = normalizeHex(color);
-      if (!seen.has(normalized) && !isGrayscale(normalized)) {
-        extracted.push(normalized);
-        seen.add(normalized);
-        if (extracted.length >= 6) {break;}
-      }
+    if (typeof color !== "string") {
+      continue;
+    }
+    const normalized = normalizeHex(color);
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(normalized);
     }
   }
 
-  // If we don't have enough colors, scan all colors
-  if (extracted.length < 4) {
-    for (const [key, color] of Object.entries(colors)) {
-      if (color && isValidHex(color)) {
-        const normalized = normalizeHex(color);
-        if (!seen.has(normalized) && !isGrayscale(normalized)) {
-          extracted.push(normalized);
-          seen.add(normalized);
-          if (extracted.length >= 6) {break;}
-        }
-      }
-    }
+  if (result.length === 0) {
+    result.push("#4a90d9");
   }
 
-  // Ensure we have at least one color
-  if (extracted.length === 0) {
-    extracted.push("#4a90d9"); // Default fallback
-  }
-
-  return extracted;
+  return result.slice(0, 5);
 }
 
-/**
- * Detect harmony type from color relationships
- */
+function getImportedPrimaryIndex(length: number): number {
+  return length <= 2 ? 0 : Math.floor(length / 2);
+}
+
 function detectHarmonyType(colors: string[]): HarmonyType {
-  if (colors.length < 2) {
+  if (colors.length <= 1) {
     return "monochromatic";
   }
 
-  const hues = colors.map((hex) => hexToHsl(hex).h);
-  const hueDiffs = [];
+  const hues = colors.map((color) => hexToHsl(color).h);
+  const differences = hues.slice(1).map((hue) => {
+    const raw = Math.abs(hue - hues[0]);
+    return raw > 180 ? 360 - raw : raw;
+  });
 
-  // Calculate hue differences
-  for (let i = 1; i < hues.length; i++) {
-    let diff = Math.abs(hues[i] - hues[0]);
-    if (diff > 180) {diff = 360 - diff;}
-    hueDiffs.push(diff);
-  }
-
-  // Check for monochromatic (all similar hues)
-  const allSimilar = hueDiffs.every((diff) => diff < 30);
-  if (allSimilar) {
+  if (differences.every((value) => value < 22)) {
     return "monochromatic";
   }
-
-  // Check for complementary (opposite hues ~180°)
-  const hasComplement = hueDiffs.some((diff) => Math.abs(diff - 180) < 30);
-  if (hasComplement && colors.length <= 3) {
+  if (differences.some((value) => Math.abs(value - 180) < 22) && colors.length <= 2) {
     return "complementary";
   }
-
-  // Check for triadic (120° apart)
-  const hasTriadic = hueDiffs.some(
-    (diff) => Math.abs(diff - 120) < 30 || Math.abs(diff - 240) < 30,
-  );
-  if (hasTriadic) {
+  if (differences.some((value) => Math.abs(value - 120) < 22)) {
     return "triadic";
   }
-
-  // Check for tetradic (90° or 180° relationships)
-  const hasTetradic = hueDiffs.some(
-    (diff) => Math.abs(diff - 90) < 30 || Math.abs(diff - 180) < 30,
-  );
-  if (hasTetradic && colors.length >= 4) {
+  if (colors.length >= 4 && differences.some((value) => Math.abs(value - 90) < 18)) {
     return "tetradic";
   }
-
-  // Check for analogous (adjacent colors 30°)
-  const hasAnalogous = hueDiffs.every((diff) => diff < 60);
-  if (hasAnalogous) {
+  if (differences.every((value) => value < 52)) {
     return "analogous";
   }
-
   return "split-complementary";
 }
 
-/**
- * Validate hex color format
- */
-function isValidHex(color: string): boolean {
-  return /^#?[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/.test(color);
+function collectWorkbenchOverrides(
+  importedColors: Record<string, string>,
+  regenerated: Palette,
+): Record<string, string> {
+  const generated = mapPaletteToTheme({ ...regenerated, themeOverrides: { workbench: {}, textMate: {}, semantic: {} } }).colors;
+  return WORKBENCH_EDITABLE_ITEMS.reduce<Record<string, string>>((accumulator, item) => {
+    const imported = importedColors[item.id];
+    if (typeof imported === "string" && normalizeHex(imported) !== normalizeHex(generated[item.id] ?? imported)) {
+      accumulator[item.id] = normalizeHex(imported);
+    }
+    return accumulator;
+  }, {});
 }
 
-/**
- * Normalize hex color (remove alpha, ensure # prefix)
- */
-function normalizeHex(color: string): string {
-  let hex = color.replace(/^#/, "");
-  if (hex.length === 8) {
-    hex = hex.substring(0, 6); // Remove alpha
+function collectTextMateOverrides(
+  importedTokenColors: any[],
+  regenerated: Palette,
+): Record<string, string> {
+  const generatedRules = mapPaletteToTheme({ ...regenerated, themeOverrides: { workbench: {}, textMate: {}, semantic: {} } }).tokenColors;
+  return TEXTMATE_EDITABLE_ITEMS.reduce<Record<string, string>>((accumulator, item) => {
+    const imported = findTokenColor(importedTokenColors, item);
+    const generated = generatedRules.find((rule) => rule.name === item.id)?.settings.foreground;
+    if (imported && generated && normalizeHex(imported) !== normalizeHex(generated)) {
+      accumulator[item.id] = normalizeHex(imported);
+    }
+    return accumulator;
+  }, {});
+}
+
+function findTokenColor(importedTokenColors: any[], item: EditableThemeItem): string | undefined {
+  for (const rule of importedTokenColors) {
+    const scopes = Array.isArray(rule?.scope) ? rule.scope : [rule?.scope];
+    if (!scopes.length) {
+      continue;
+    }
+    if (scopes.some((scope: string) => item.scopes?.includes(scope))) {
+      if (typeof rule?.settings?.foreground === "string") {
+        return normalizeHex(rule.settings.foreground);
+      }
+    }
   }
-  return `#${hex.toLowerCase()}`;
+  return undefined;
 }
 
-/**
- * Check if color is grayscale
- */
-function isGrayscale(hex: string): boolean {
-  const rgb = hexToRgb(hex);
-  const max = Math.max(rgb.r, rgb.g, rgb.b);
-  const min = Math.min(rgb.r, rgb.g, rgb.b);
-  return max - min < 15; // Threshold for grayscale detection
+function collectSemanticOverrides(
+  importedSemanticTokenColors: Record<string, string>,
+  regenerated: Palette,
+): Record<string, string> {
+  const generated = mapPaletteToTheme({ ...regenerated, themeOverrides: { workbench: {}, textMate: {}, semantic: {} } }).semanticTokenColors;
+  return SEMANTIC_EDITABLE_ITEMS.reduce<Record<string, string>>((accumulator, item) => {
+    const selector = item.semanticSelector ?? item.id;
+    const imported = importedSemanticTokenColors[selector];
+    const current = generated[selector];
+    if (typeof imported === "string" && current && normalizeHex(imported) !== normalizeHex(current)) {
+      accumulator[item.id] = normalizeHex(imported);
+    }
+    return accumulator;
+  }, {});
 }

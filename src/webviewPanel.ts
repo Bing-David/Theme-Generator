@@ -1,313 +1,363 @@
-/**
- * Webview Panel Manager
- * Manages VSCode webview panel lifecycle and communication
- */
+import * as vscode from "vscode";
+import {
+  Palette,
+  HarmonyType,
+  applyPaletteAdjustments,
+  generatePalette,
+  randomizePalette,
+  setBaseColorLocked,
+  setThemeOverride,
+  updateBaseColor,
+  updateSeedColor,
+} from "./colorGenerator";
+import { CustomPaletteManager } from "./customPalette";
+import {
+  applyThemePreview,
+  clearThemePreview,
+  exportThemeToFile,
+  getEditableThemeColorState,
+  importThemeFromFile,
+  mapPaletteToTheme,
+} from "./themeExporter";
+import {
+  SEMANTIC_EDITABLE_ITEMS,
+  TEXTMATE_EDITABLE_ITEMS,
+  WORKBENCH_EDITABLE_ITEMS,
+} from "./themeCatalog";
+import { getHtml } from "./webviewHtml";
+import { getScript } from "./webviewScript";
+import { getStyles } from "./webviewStyle";
 
-import * as vscode from 'vscode';
-import { Palette, HarmonyType, generatePalette, applyPaletteAdjustments, randomHex } from './colorGenerator';
-import { CustomPaletteManager } from './customPalette';
-import { mapPaletteToTheme, exportThemeToFile, applyThemePreview, clearThemePreview, importThemeFromFile } from './themeExporter';
-import { getStyles } from './webviewStyle';
-import { getHtml } from './webviewHtml';
-import { getScript } from './webviewScript';
+interface PanelInitData {
+  palette: Palette;
+  savedPalettes: Palette[];
+  catalog: {
+    workbench: typeof WORKBENCH_EDITABLE_ITEMS;
+    textMate: typeof TEXTMATE_EDITABLE_ITEMS;
+    semantic: typeof SEMANTIC_EDITABLE_ITEMS;
+  };
+}
 
 export class PalettePanel {
-    public static currentPanel: PalettePanel | undefined;
-    private static readonly viewType = 'vscThemeGenerator.paletteView';
+  public static currentPanel: PalettePanel | undefined;
+  private static readonly viewType = "vscThemeGenerator.paletteView";
 
-    private readonly panel: vscode.WebviewPanel;
-    private readonly extensionUri: vscode.Uri;
-    private readonly paletteManager: CustomPaletteManager;
-    private disposables: vscode.Disposable[] = [];
+  private readonly panel: vscode.WebviewPanel;
+  private readonly paletteManager: CustomPaletteManager;
+  private disposables: vscode.Disposable[] = [];
+  private currentPalette: Palette;
+  private autoPreviewEnabled = true;
+  private onPaletteChangedCallback: ((palette: Palette) => void) | undefined;
 
-    private currentPalette: Palette | undefined;
-    private onPaletteChangedCallback: ((palette: Palette) => void) | undefined;
+  public static createOrShow(
+    extensionUri: vscode.Uri,
+    paletteManager: CustomPaletteManager,
+    palette: Palette,
+  ): PalettePanel {
+    const column = vscode.ViewColumn.One;
 
-    public static createOrShow(
-        extensionUri: vscode.Uri,
-        paletteManager: CustomPaletteManager,
-    ): PalettePanel {
-        const column = vscode.ViewColumn.One;
+    if (PalettePanel.currentPanel) {
+      PalettePanel.currentPanel.panel.reveal(column);
+      PalettePanel.currentPanel.setPalette(palette, false);
+      return PalettePanel.currentPanel;
+    }
 
-        if (PalettePanel.currentPanel) {
-            PalettePanel.currentPanel.panel.reveal(column);
-            return PalettePanel.currentPanel;
-        }
+    const panel = vscode.window.createWebviewPanel(
+      PalettePanel.viewType,
+      "Theme Generator",
+      column,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(extensionUri, "media")],
+      },
+    );
 
-        const panel = vscode.window.createWebviewPanel(
-            PalettePanel.viewType,
-            'Theme Generator',
-            column,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true,
-                localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'media')],
-            },
+    PalettePanel.currentPanel = new PalettePanel(panel, paletteManager, palette);
+    return PalettePanel.currentPanel;
+  }
+
+  private constructor(
+    panel: vscode.WebviewPanel,
+    paletteManager: CustomPaletteManager,
+    palette: Palette,
+  ) {
+    this.panel = panel;
+    this.paletteManager = paletteManager;
+    this.currentPalette = palette;
+
+    this.panel.webview.html = this.getHtml();
+    this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
+    this.panel.webview.onDidReceiveMessage(
+      (message) => void this.handleMessage(message),
+      null,
+      this.disposables,
+    );
+  }
+
+  // Messaging
+
+  private async handleMessage(message: any): Promise<void> {
+    switch (message.command) {
+      case "initialize":
+        this.sendInitializationData();
+        return;
+      case "generatePalette":
+        this.currentPalette = generatePalette(
+          message.baseColor,
+          message.harmony as HarmonyType,
+          this.currentPalette.name,
+          {
+            saturation: message.saturation,
+            luminosity: message.luminosity,
+            variation: message.variation,
+            syntaxSaturation: message.syntaxSaturation,
+          },
+          this.currentPalette.source,
+          this.currentPalette.baseColorLocked,
         );
-
-        PalettePanel.currentPanel = new PalettePanel(panel, extensionUri, paletteManager);
-        return PalettePanel.currentPanel;
-    }
-
-    private constructor(
-        panel: vscode.WebviewPanel,
-        extensionUri: vscode.Uri,
-        paletteManager: CustomPaletteManager,
-    ) {
-        this.panel = panel;
-        this.extensionUri = extensionUri;
-        this.paletteManager = paletteManager;
-
-        this.panel.webview.html = this.getHtml();
-        this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
-        this.panel.webview.onDidReceiveMessage(
-            msg => this.handleMessage(msg),
-            null,
-            this.disposables,
-        );
-    }
-
-    private async handleMessage(msg: any): Promise<void> {
-        switch (msg.command) {
-            case 'generate':
-                this.generateAndSend(
-                    msg.baseColor, 
-                    msg.harmony, 
-                    msg.contrastLevel,
-                    msg.saturation,
-                    msg.luminosity,
-                    msg.variation,
-                    msg.syntaxSaturation
-                );
-                break;
-            case 'random': {
-                const randomBase = randomHex();
-                this.generateAndSend(
-                    randomBase,
-                    msg.harmony ?? 'complementary', 
-                    msg.contrastLevel,
-                    msg.saturation,
-                    msg.luminosity,
-                    msg.variation,
-                    msg.syntaxSaturation,
-                    true,
-                    randomBase
-                );
-                break;
-            }
-            case 'editColor':
-                if (this.currentPalette && msg.index >= 0) {
-                    this.currentPalette.colors[msg.index].hex = msg.newColor;
-                    this.currentPalette.colors[msg.index].name = `Color ${msg.index + 1}`;
-                    const editTheme = mapPaletteToTheme(this.currentPalette);
-                    this.panel.webview.postMessage({
-                        command: 'updatePalette',
-                        palette: this.currentPalette,
-                        themeColors: editTheme.colors
-                    });
-                    if (msg.autoPreview) {
-                        await applyThemePreview(editTheme);
-                    }
-                }
-                break;
-            case 'updateThemeElement':
-                if (this.currentPalette && msg.key && msg.color) {
-                    if (!this.currentPalette.overrides) {
-                        this.currentPalette.overrides = {};
-                    }
-                    this.currentPalette.overrides[msg.key] = msg.color;
-                    const theme = mapPaletteToTheme(this.currentPalette);
-                    await applyThemePreview(theme);
-                    this.panel.webview.postMessage({ 
-                        command: 'themeElementUpdated', 
-                        key: msg.key, 
-                        color: msg.color 
-                    });
-                }
-                break;
-            case 'savePalette':
-                if (this.currentPalette) {
-                    const name = await vscode.window.showInputBox({
-                        prompt: 'Enter a name for your palette',
-                        value: msg.name || this.currentPalette.name,
-                        placeHolder: 'My Awesome Theme'
-                    });
-                    if (name) {
-                        if (name !== this.currentPalette.name) {
-                            this.currentPalette.id = Date.now().toString();
-                            this.currentPalette.name = name;
-                        }
-                        await this.paletteManager.add({ ...this.currentPalette });
-                        this.sendSavedPalettes();
-                        const theme = mapPaletteToTheme(this.currentPalette);
-                        this.panel.webview.postMessage({
-                            command: 'updatePalette',
-                            palette: this.currentPalette,
-                            themeColors: theme.colors,
-                            syntaxTokens: theme.tokenColors
-                        });
-                    }
-                }
-                break;
-            case 'deletePalette':
-                if (this.currentPalette && this.currentPalette.id === msg.id) {
-                    await clearThemePreview();
-                    this.currentPalette = undefined;
-                    this.panel.webview.postMessage({ command: 'clearPreview' });
-                }
-                await this.paletteManager.remove(msg.id);
-                this.sendSavedPalettes();
-                break;
-            case 'loadPalette': {
-                const palette = this.paletteManager.getById(msg.id);
-                if (palette) {
-                    this.currentPalette = palette;
-                    const loadTheme = mapPaletteToTheme(palette);
-                    this.panel.webview.postMessage({
-                        command: 'updatePalette',
-                        palette,
-                        themeColors: loadTheme.colors,
-                        syntaxTokens: loadTheme.tokenColors
-                    });
-                }
-                break;
-            }
-            case 'exportTheme':
-                if (this.currentPalette) {
-                    const theme = mapPaletteToTheme(this.currentPalette, msg.themeName);
-                    await exportThemeToFile(theme);
-                }
-                break;
-            case 'previewTheme':
-                if (this.currentPalette) {
-                    const theme = mapPaletteToTheme(this.currentPalette, undefined, msg.syntaxSaturation);
-                    await applyThemePreview(theme);
-                }
-                break;
-            case 'importTheme': {
-                const palette = await importThemeFromFile();
-                if (palette) {
-                    this.currentPalette = palette;
-                    await this.paletteManager.add(palette);
-                    this.sendSavedPalettes();
-                    const importTheme = mapPaletteToTheme(palette);
-                    this.panel.webview.postMessage({
-                        command: 'updatePalette',
-                        palette,
-                        themeColors: importTheme.colors,
-                        syntaxTokens: importTheme.tokenColors
-                    });
-                    this.notifyPaletteChanged();
-                }
-                break;
-            }
-            case 'adjust':
-                if (this.currentPalette) {
-                    const palette = this.currentPalette;
-                    this.currentPalette = applyPaletteAdjustments(palette, {
-                        saturation: msg.saturation,
-                        luminosity: msg.luminosity,
-                        variation: msg.variation
-                    });
-                    const theme = mapPaletteToTheme(this.currentPalette, undefined, msg.syntaxSaturation);
-                    this.panel.webview.postMessage({
-                        command: 'updatePalette',
-                        palette: this.currentPalette,
-                        themeColors: theme.colors,
-                        syntaxTokens: theme.tokenColors
-                    });
-                    if (msg.autoPreview) {
-                        await applyThemePreview(theme);
-                    }
-                }
-                break;
-            case 'clearPreview':
-                await clearThemePreview();
-                break;
-            case 'getSavedPalettes':
-                this.sendSavedPalettes();
-                break;
+        this.notifyPaletteChanged();
+        this.sendPaletteState();
+        if (message.autoPreview) {
+          await this.previewCurrentPalette();
         }
-    }
-
-    private generateAndSend(
-        baseColor: string, 
-        harmony: HarmonyType, 
-        contrastLevel: number = 0.7,
-        saturation?: number,
-        luminosity?: number,
-        variation?: number,
-        syntaxSaturation?: number,
-        isRandom: boolean = false,
-        baseHex?: string
-    ): void {
-        this.currentPalette = generatePalette(baseColor, harmony, undefined, {
-            saturation,
-            luminosity,
-            variation
-        });
-        const theme = mapPaletteToTheme(this.currentPalette, undefined, syntaxSaturation);
-        this.panel.webview.postMessage({
-            command: 'updatePalette',
-            palette: this.currentPalette,
-            themeColors: theme.colors,
-            syntaxTokens: theme.tokenColors,
-            contrastLevel,
-            syntaxSaturation,
-            isRandom,
-            baseHex: baseHex ?? baseColor
+        return;
+      case "adjustPalette":
+        this.currentPalette = applyPaletteAdjustments(this.currentPalette, {
+          saturation: message.saturation,
+          luminosity: message.luminosity,
+          variation: message.variation,
+          syntaxSaturation: message.syntaxSaturation,
         });
         this.notifyPaletteChanged();
-    }
-
-    private sendSavedPalettes(): void {
-        this.panel.webview.postMessage({
-            command: 'savedPalettes',
-            palettes: this.paletteManager.getAll(),
-        });
-    }
-
-    public dispose(): void {
-        PalettePanel.currentPanel = undefined;
-        this.panel.dispose();
-        this.disposables.forEach(d => d.dispose());
-        this.disposables = [];
-    }
-
-    public updatePalette(palette: Palette): void {
-        this.currentPalette = palette;
-        const theme = mapPaletteToTheme(palette);
-        this.panel.webview.postMessage({
-            command: 'updatePalette',
-            palette: this.currentPalette,
-            themeColors: theme.colors,
-        });
-    }
-
-    public onPaletteChanged(callback: (palette: Palette) => void): void {
-        this.onPaletteChangedCallback = callback;
-    }
-
-    private notifyPaletteChanged(): void {
-        if (this.currentPalette && this.onPaletteChangedCallback) {
-            this.onPaletteChangedCallback(this.currentPalette);
+        this.sendPaletteState();
+        if (message.autoPreview) {
+          await this.previewCurrentPalette();
         }
+        return;
+      case "randomizePalette":
+        this.currentPalette = randomizePalette(this.currentPalette);
+        this.notifyPaletteChanged();
+        this.sendPaletteState();
+        if (message.autoPreview) {
+          await this.previewCurrentPalette();
+        }
+        return;
+      case "setBaseColor":
+        this.currentPalette = updateBaseColor(this.currentPalette, message.baseColor);
+        this.notifyPaletteChanged();
+        this.sendPaletteState();
+        if (message.autoPreview) {
+          await this.previewCurrentPalette();
+        }
+        return;
+      case "setBaseColorLock":
+        this.currentPalette = setBaseColorLocked(this.currentPalette, Boolean(message.locked));
+        this.notifyPaletteChanged();
+        this.sendPaletteState();
+        return;
+      case "setAutoPreview":
+        this.autoPreviewEnabled = Boolean(message.enabled);
+        if (this.autoPreviewEnabled) {
+          await this.previewCurrentPalette();
+        }
+        return;
+      case "updateSeedColor":
+        this.currentPalette = updateSeedColor(this.currentPalette, message.index, message.color);
+        this.notifyPaletteChanged();
+        this.sendPaletteState();
+        if (message.autoPreview) {
+          await this.previewCurrentPalette();
+        }
+        return;
+      case "updateWorkbenchColor":
+        this.currentPalette = setThemeOverride(
+          this.currentPalette,
+          "workbench",
+          message.id,
+          message.color,
+        );
+        this.notifyPaletteChanged();
+        this.sendPaletteState();
+        if (message.autoPreview) {
+          await this.previewCurrentPalette();
+        }
+        return;
+      case "updateTextMateToken":
+        this.currentPalette = setThemeOverride(
+          this.currentPalette,
+          "textMate",
+          message.id,
+          message.color,
+        );
+        this.notifyPaletteChanged();
+        this.sendPaletteState();
+        if (message.autoPreview) {
+          await this.previewCurrentPalette();
+        }
+        return;
+      case "updateSemanticToken":
+        this.currentPalette = setThemeOverride(
+          this.currentPalette,
+          "semantic",
+          message.id,
+          message.color,
+        );
+        this.notifyPaletteChanged();
+        this.sendPaletteState();
+        if (message.autoPreview) {
+          await this.previewCurrentPalette();
+        }
+        return;
+      case "previewTheme":
+        await this.previewCurrentPalette();
+        return;
+      case "clearPreview":
+        await clearThemePreview();
+        this.panel.webview.postMessage({ command: "previewCleared" });
+        return;
+      case "savePalette":
+        await this.saveCurrentPalette();
+        return;
+      case "deletePalette":
+        await this.paletteManager.remove(message.id);
+        await clearThemePreview();
+        this.sendSavedPalettes();
+        this.panel.webview.postMessage({ command: "previewCleared" });
+        return;
+      case "loadPalette": {
+        const palette = this.paletteManager.getById(message.id);
+        if (palette) {
+          this.currentPalette = palette;
+          this.notifyPaletteChanged();
+          this.sendPaletteState();
+          if (this.autoPreviewEnabled) {
+            await this.previewCurrentPalette();
+          }
+        }
+        return;
+      }
+      case "exportTheme":
+        await exportThemeToFile(mapPaletteToTheme(this.currentPalette, message.themeName));
+        return;
+      case "importTheme": {
+        const imported = await importThemeFromFile();
+        if (imported) {
+          this.currentPalette = imported;
+          await this.paletteManager.add(imported);
+          this.notifyPaletteChanged();
+          this.sendSavedPalettes();
+          this.sendPaletteState();
+          if (this.autoPreviewEnabled) {
+            await this.previewCurrentPalette();
+          }
+        }
+        return;
+      }
+      default:
+        return;
+    }
+  }
+
+  // Public
+
+  public dispose(): void {
+    PalettePanel.currentPanel = undefined;
+    this.panel.dispose();
+    this.disposables.forEach((disposable) => disposable.dispose());
+    this.disposables = [];
+  }
+
+  public onPaletteChanged(callback: (palette: Palette) => void): void {
+    this.onPaletteChangedCallback = callback;
+  }
+
+  public setPalette(palette: Palette, preview = false): void {
+    this.currentPalette = palette;
+    this.sendPaletteState();
+    if (preview && this.autoPreviewEnabled) {
+      void this.previewCurrentPalette();
+    }
+  }
+
+  // State
+
+  private notifyPaletteChanged(): void {
+    this.onPaletteChangedCallback?.(this.currentPalette);
+  }
+
+  private sendInitializationData(): void {
+    const initData: PanelInitData = {
+      palette: this.currentPalette,
+      savedPalettes: this.paletteManager.getAll(),
+      catalog: {
+        workbench: WORKBENCH_EDITABLE_ITEMS,
+        textMate: TEXTMATE_EDITABLE_ITEMS,
+        semantic: SEMANTIC_EDITABLE_ITEMS,
+      },
+    };
+
+    this.panel.webview.postMessage({
+      command: "initializeData",
+      data: initData,
+      editableColors: getEditableThemeColorState(mapPaletteToTheme(this.currentPalette)),
+    });
+  }
+
+  private sendPaletteState(): void {
+    const theme = mapPaletteToTheme(this.currentPalette);
+    this.panel.webview.postMessage({
+      command: "paletteState",
+      palette: this.currentPalette,
+      editableColors: getEditableThemeColorState(theme),
+    });
+  }
+
+  private sendSavedPalettes(): void {
+    this.panel.webview.postMessage({
+      command: "savedPalettes",
+      palettes: this.paletteManager.getAll(),
+    });
+  }
+
+  private async previewCurrentPalette(): Promise<void> {
+    await applyThemePreview(mapPaletteToTheme(this.currentPalette));
+    this.panel.webview.postMessage({ command: "previewApplied" });
+  }
+
+  private async saveCurrentPalette(): Promise<void> {
+    const name = await vscode.window.showInputBox({
+      prompt: "Enter a name for your palette",
+      value: this.currentPalette.name,
+      placeHolder: "My Theme",
+    });
+
+    if (!name) {
+      return;
     }
 
-    private getHtml(): string {
-        const nonce = getNonce();
-        const styles = getStyles();
-        const script = getScript();
-        return getHtml(styles, script, nonce);
-    }
+    this.currentPalette = {
+      ...this.currentPalette,
+      name,
+    };
+
+    await this.paletteManager.add(this.currentPalette);
+    this.notifyPaletteChanged();
+    this.sendSavedPalettes();
+    this.sendPaletteState();
+  }
+
+  private getHtml(): string {
+    const nonce = getNonce();
+    return getHtml(getStyles(), getScript(), nonce);
+  }
 }
 
 function getNonce(): string {
-    let text = '';
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-        text += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return text;
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let value = "";
+  for (let index = 0; index < 32; index += 1) {
+    value += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return value;
 }
-
